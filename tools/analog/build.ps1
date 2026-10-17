@@ -8,7 +8,7 @@ if(-not $Cache){$Cache=Join-Path $root '.cache/android-tools'}
 $build=Join-Path $root 'phase2b-20261015/analog/build'
 New-Item -ItemType Directory -Path $build,$Cache -Force | Out-Null
 $dependencies=@(
- @{Name='ecj-4.6.1.jar';Url='https://repo.maven.apache.org/maven2/org/eclipse/jdt/ecj/4.6.1/ecj-4.6.1.jar';Sha='9CDDDA75F4A1B4469E73F44E7B61A3E897D0F657DF4797F9106FFE88C4EEADE0'},
+ @{Name='ecj-4.6.1.jar';Url='https://repo.maven.apache.org/maven2/org/eclipse/jdt/core/compiler/ecj/4.6.1/ecj-4.6.1.jar';Sha='9CDDDA75F4A1B4469E73F44E7B61A3E897D0F657DF4797F9106FFE88C4EEADE0'},
  @{Name='r8-3.3.75.jar';Url='https://storage.googleapis.com/r8-releases/raw/3.3.75/r8.jar';Sha='2359201406AEB6ABABB6BAF40298730B998321049C5753DA6A0B050EFAA0B393'}
 )
 foreach($dependency in $dependencies){

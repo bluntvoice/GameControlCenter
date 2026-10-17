@@ -160,6 +160,11 @@ class EditorUiTests(unittest.TestCase):
         picker.popup.invoke(1);self.assertEqual(value.get(),'新方案');callback.assert_called_once()
         picker.configure(state='disabled');self.assertEqual(str(picker.cget('state')),'disabled')
     def test_console_layout_and_narrow_strip_controls_fit(self):
+        self.assert_console_layout_fits()
+    def test_console_layout_fits_short_desktop_without_hiding_fps(self):
+        with patch.object(tk.Tk,'winfo_screenheight',return_value=768):
+            self.assert_console_layout_fits()
+    def assert_console_layout_fits(self):
         import main
         backend=self.app.backend
         backend.config=dict(serial='192.0.2.10:5555',mini_visible=False,mini_size=[432,84])

@@ -79,7 +79,19 @@ class App:
              highlightbackground=LINE if bg==WHITE else bg,highlightcolor=BLUE)
     def panel(self,parent): return tk.Frame(parent,bg=WHITE,highlightthickness=1,highlightbackground=LINE)
     def build_live(self,parent):
-        top=tk.Frame(parent,bg=BG);top.pack(fill='x',pady=(10,9))
+        small_screen=self.root.winfo_screenheight()<1000
+        if small_screen:
+            # Reserve the FPS panel first; software cards remain reachable by scrolling.
+            viewport=tk.Frame(parent,bg=BG)
+            scroll=tk.Scrollbar(viewport,orient='vertical');scroll.pack(side='right',fill='y')
+            canvas=tk.Canvas(viewport,bg=BG,height=1,highlightthickness=0,yscrollcommand=scroll.set)
+            canvas.pack(side='left',fill='both',expand=True);scroll.configure(command=canvas.yview)
+            content=tk.Frame(canvas,bg=BG);item=canvas.create_window((0,0),window=content,anchor='nw')
+            content.bind('<Configure>',lambda event:canvas.configure(scrollregion=canvas.bbox('all')))
+            canvas.bind('<Configure>',lambda event:canvas.itemconfigure(item,width=event.width))
+            top=tk.Frame(content,bg=BG)
+        else:top=tk.Frame(parent,bg=BG)
+        top.pack(fill='x',pady=(10,9))
         top.columnconfigure(0,weight=3);top.columnconfigure(1,weight=2)
         programs=tk.Frame(top,bg=BG);programs.grid(row=0,column=0,sticky='nsew',padx=(0,10))
         for col in range(2): programs.columnconfigure(col,weight=1)
@@ -111,7 +123,9 @@ class App:
         events=self.panel(parent);events.pack(side='bottom',fill='x',pady=(8,0))
         self.latest=tk.Label(events,text='正在建立监测',bg=WHITE,fg=MUTED,font=SMALL,anchor='w',justify='left',wraplength=960)
         self.latest.pack(fill='x',padx=12,pady=8)
-        chart_panel=self.panel(parent);chart_panel.pack(fill='both',expand=True)
+        chart_panel=self.panel(parent)
+        if small_screen:chart_panel.pack(side='bottom',fill='x')
+        else:chart_panel.pack(fill='both',expand=True)
         chart_heading=tk.Frame(chart_panel,bg=WHITE);chart_heading.pack(fill='x',padx=14,pady=(9,2))
         tk.Label(chart_heading,text='帧率波动',bg=WHITE,fg=INK,font=('Microsoft YaHei UI',11,'bold')).pack(side='left')
         self.fps_summary=tk.Label(chart_heading,text='等待真实样本',bg=WHITE,fg=MUTED,font=SMALL);self.fps_summary.pack(side='right')
@@ -121,6 +135,7 @@ class App:
         tk.Label(chart_panel,text='蓝：GameScrcpy 原生解码 FPS   青：手机游戏画面合成 FPS   缺失数据留空；两者均不等于端到端延迟。',
             bg=WHITE,fg=MUTED,font=('Microsoft YaHei UI',8),anchor='w',wraplength=950,justify='left').pack(side='bottom',fill='x',padx=14,pady=(0,6))
         self.chart=tk.Canvas(chart_panel,height=133,bg=WHITE,highlightthickness=0);self.chart.pack(fill='both',expand=True,padx=8)
+        if small_screen:viewport.pack(fill='both',expand=True)
     def build_records(self,parent):
         profile=self.panel(parent);profile.pack(fill='x',pady=12)
         self.record_profile=tk.Label(profile,text='当前方案读取中',bg=WHITE,fg=INK,font=('Microsoft YaHei UI',13,'bold'));self.record_profile.pack(anchor='w',padx=16,pady=(14,7))

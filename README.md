@@ -1,6 +1,7 @@
 # GameControlCenter · 手机游戏控制台
 
-<img src=“control-center/assets/center.png” width=“72” alt=“手柄图标”>
+[![版本](https://img.shields.io/github/v/release/bluntvoice/GameControlCenter?label=%E7%89%88%E6%9C%AC&color=2563eb)](https://github.com/bluntvoice/GameControlCenter/releases/latest)
+[![下载量](https://img.shields.io/github/downloads/bluntvoice/GameControlCenter/total?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=16a34a)](https://github.com/bluntvoice/GameControlCenter/releases)
 
 在 Windows 上通过 GameScrcpy 玩手机游戏，使用手柄双摇杆和鼠标操作，并在一个控制台里管理启动、按键方案和运行状态。
 

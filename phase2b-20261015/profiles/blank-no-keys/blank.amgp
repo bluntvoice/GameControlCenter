@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<gamecontroller configversion="19" appversion="3.6.1">
+  <sdlname>Xbox Series X Controller</sdlname>
+  <uniqueID>00000000000000000000000000000000</uniqueID>
+  <profilename>空白方案-无映射-右摇杆归适配器</profilename>
+  <stickAxisAssociation index="1" xAxis="1" yAxis="2" />
+  <stickAxisAssociation index="2" xAxis="3" yAxis="4" />
+  <sets>
+    <set index="1">
+      </set>
+  </sets>
+</gamecontroller>

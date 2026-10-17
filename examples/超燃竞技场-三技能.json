@@ -1,0 +1,143 @@
+{
+  "switchKey": "Key_QuoteLeft",
+  "keyMapNodes": [
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_8",
+      "pos": {
+        "x": 0.6065,
+        "y": 0.904
+      },
+      "script": "mapi.holdpress();"
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_4",
+      "pos": {
+        "x": 0.8475,
+        "y": 0.6499
+      },
+      "script": "mapi.holdpress();"
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_0",
+      "pos": {
+        "x": 0.7467,
+        "y": 0.7233
+      },
+      "script": "if (mapi.isPress()) { mapi.click(); }"
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_3",
+      "pos": {
+        "x": 0.8017,
+        "y": 0.8098
+      },
+      "script": "mapi.holdpress();"
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_9",
+      "pos": {
+        "x": 0.5066,
+        "y": 0.4696
+      },
+      "script": "mapi.holdpress();"
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_1",
+      "pos": {
+        "x": 0.9542,
+        "y": 0.6542
+      },
+      "script": "if (mapi.isPress()) { mapi.click(); }"
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_5",
+      "pos": {
+        "x": 0.6764,
+        "y": 0.9006
+      },
+      "script": "mapi.holdpress();"
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_6",
+      "pos": {
+        "x": 0.905696,
+        "y": 0.876204
+      },
+      "script": "if (mapi.isPress()) { mapi.click(); }"
+    },
+    {
+      "type": "KMT_CAMERA_MOVE",
+      "key": "Key_QuoteLeft",
+      "pos": {
+        "x": 0.7149,
+        "y": 0.1614
+      },
+      "speedRatioX": 1.0,
+      "speedRatioY": 1.0
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_Minus",
+      "pos": {
+        "x": 0.2362,
+        "y": 0.4668
+      },
+      "script": "mapi.holdpress();"
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_Equal",
+      "pos": {
+        "x": 0.7966,
+        "y": 0.4655
+      },
+      "script": "mapi.holdpress();"
+    },
+    {
+      "type": "KMT_STEER_WHEEL",
+      "centerPos": {
+        "x": 0.126582,
+        "y": 0.74553
+      },
+      "leftKey": "Key_A",
+      "rightKey": "Key_D",
+      "upKey": "Key_W",
+      "downKey": "Key_S",
+      "leftOffset": 0.03450920245398773,
+      "rightOffset": 0.03450920245398773,
+      "upOffset": 0.075,
+      "downOffset": 0.075
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_7",
+      "pos": {
+        "x": 0.877215,
+        "y": 0.874828
+      },
+      "script": "mapi.holdpress();"
+    },
+    {
+      "type": "KMT_SCRIPT",
+      "key": "Key_2",
+      "pos": {
+        "x": 0.8939,
+        "y": 0.5591
+      },
+      "script": "mapi.holdpress();"
+    }
+  ],
+  "migration": {
+    "source_name": "超燃竞技场-三技能",
+    "source": "控制台拖放编辑器",
+    "calibration_status": "user_placed_pending_gameplay"
+  }
+}

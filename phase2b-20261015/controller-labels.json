@@ -1,0 +1,86 @@
+{
+  "Key_1": {
+    "pad": "A",
+    "action": "",
+    "color": "#83D96B",
+    "calibrated": true
+  },
+  "Key_2": {
+    "pad": "B",
+    "action": "",
+    "color": "#FF8989",
+    "calibrated": true
+  },
+  "Key_3": {
+    "pad": "X",
+    "action": "",
+    "color": "#84BEFF",
+    "calibrated": true
+  },
+  "Key_4": {
+    "pad": "Y",
+    "action": "",
+    "color": "#FFDA69",
+    "calibrated": true
+  },
+  "Key_5": {
+    "pad": "LB",
+    "action": "",
+    "color": "#D9E4EE",
+    "calibrated": true
+  },
+  "Key_6": {
+    "pad": "RB",
+    "action": "",
+    "color": "#D9E4EE",
+    "calibrated": true
+  },
+  "Key_7": {
+    "pad": "LT",
+    "action": "",
+    "color": "#D9E4EE",
+    "calibrated": true
+  },
+  "Key_8": {
+    "pad": "RT",
+    "action": "",
+    "color": "#D9E4EE",
+    "calibrated": true
+  },
+  "Key_9": {
+    "pad": "↑",
+    "action": "",
+    "color": "#9DE0EF",
+    "calibrated": true
+  },
+  "Key_0": {
+    "pad": "↓",
+    "action": "",
+    "color": "#9DE0EF",
+    "calibrated": true
+  },
+  "Key_Minus": {
+    "pad": "←",
+    "action": "",
+    "color": "#9DE0EF",
+    "calibrated": true
+  },
+  "Key_Equal": {
+    "pad": "→",
+    "action": "",
+    "color": "#9DE0EF",
+    "calibrated": true
+  },
+  "wheel": {
+    "pad": "左摇杆",
+    "action": "",
+    "color": "#B9F3C1",
+    "calibrated": true
+  },
+  "camera": {
+    "pad": "右摇杆",
+    "action": "",
+    "color": "#B9F3C1",
+    "calibrated": true
+  }
+}

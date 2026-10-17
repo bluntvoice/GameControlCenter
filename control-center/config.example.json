@@ -1,0 +1,13 @@
+{
+  "version": "0.3.0",
+  "gamescrcpy": "C:/Games/GameScrcpy/GameScrcpy.exe",
+  "adb": "C:/Games/GameScrcpy/adb.exe",
+  "serial": "192.0.2.10:5555",
+  "powershell": "C:/Program Files/PowerShell/7/pwsh.exe",
+  "antimicrox": "",
+  "package": "com.netease.party",
+  "mini_visible": false,
+  "labels_enabled": true,
+  "sample_seconds": 2,
+  "fps_low_threshold": 48
+}

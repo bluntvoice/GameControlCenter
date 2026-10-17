@@ -1,0 +1,13 @@
+{
+  "left_deadzone": 0.1,
+  "right_deadzone": 0.12,
+  "right_curve": 1.5,
+  "camera_px_per_sec": 800,
+  "skill_radius_px": 90,
+  "pause_on_focus_loss": false,
+  "auto_on_foreground": true,
+  "right_center": [
+    0,
+    0
+  ]
+}

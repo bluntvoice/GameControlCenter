@@ -1,0 +1,128 @@
+[
+  {
+    "name": "RT",
+    "x": 0.6065,
+    "y": 0.904,
+    "mode": "hold",
+    "radius": 75,
+    "hz": 1,
+    "hit_radius": 0
+  },
+  {
+    "name": "Y",
+    "x": 0.8475,
+    "y": 0.6499,
+    "mode": "hold",
+    "radius": 30.0,
+    "hz": 1,
+    "hit_radius": 0.0
+  },
+  {
+    "name": "↓",
+    "x": 0.7467,
+    "y": 0.7233,
+    "mode": "once",
+    "radius": 30.0,
+    "hz": 1,
+    "hit_radius": 0.0
+  },
+  {
+    "name": "X",
+    "x": 0.8017,
+    "y": 0.8098,
+    "mode": "hold",
+    "radius": 30.0,
+    "hz": 1,
+    "hit_radius": 0.0
+  },
+  {
+    "name": "↑",
+    "x": 0.5066,
+    "y": 0.4696,
+    "mode": "hold",
+    "radius": 75,
+    "hz": 1,
+    "hit_radius": 0
+  },
+  {
+    "name": "A",
+    "x": 0.9542,
+    "y": 0.6542,
+    "mode": "once",
+    "radius": 30.0,
+    "hz": 1,
+    "hit_radius": 0.0
+  },
+  {
+    "name": "LB",
+    "x": 0.6764,
+    "y": 0.9006,
+    "mode": "hold",
+    "radius": 30.0,
+    "hz": 1,
+    "hit_radius": 0.0
+  },
+  {
+    "name": "RB",
+    "x": 0.905696,
+    "y": 0.876204,
+    "mode": "once",
+    "radius": 30.0,
+    "hz": 1,
+    "hit_radius": 0.0
+  },
+  {
+    "name": "右摇杆",
+    "x": 0.7149,
+    "y": 0.1614,
+    "mode": "hold",
+    "radius": 100,
+    "hz": 1,
+    "hit_radius": 0
+  },
+  {
+    "name": "←",
+    "x": 0.2362,
+    "y": 0.4668,
+    "mode": "hold",
+    "radius": 75,
+    "hz": 1,
+    "hit_radius": 0
+  },
+  {
+    "name": "→",
+    "x": 0.7966,
+    "y": 0.4655,
+    "mode": "hold",
+    "radius": 75,
+    "hz": 1,
+    "hit_radius": 0
+  },
+  {
+    "name": "左摇杆",
+    "x": 0.126582,
+    "y": 0.74553,
+    "mode": "aim",
+    "radius": 90,
+    "hz": 1,
+    "hit_radius": 1.0
+  },
+  {
+    "name": "LT",
+    "x": 0.877215,
+    "y": 0.874828,
+    "mode": "repeat",
+    "radius": 30.0,
+    "hz": 3.0,
+    "hit_radius": 0.0
+  },
+  {
+    "name": "B",
+    "x": 0.8939,
+    "y": 0.5591,
+    "mode": "hold",
+    "radius": 30.0,
+    "hz": 1,
+    "hit_radius": 0.0
+  }
+]

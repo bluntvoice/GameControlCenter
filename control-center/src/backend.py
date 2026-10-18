@@ -13,6 +13,7 @@ import time
 import traceback
 
 import winprobe
+from video_layout import VideoLayoutMemory
 from phoneprobe import Phone
 if not getattr(sys,'frozen',False):sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'tools/analog'))
 from profile_store import ProfileStore
@@ -81,6 +82,7 @@ class Center:
         self.busy=False; self.action=''; self.phone_probe=Phone(self.config)
         self.tracker=Tracker(); self.fps_process=None; self.last_signatures={}; self.low_count=0
         self.controller=winprobe.Controller()
+        self.video_layout=VideoLayoutMemory(self.config.get('video_window_layout'))
         self.helper_stop=self.runtime/f'fps-{os.getpid()}.stop'
         self.known_pids={}; self.last_log_path=None; self.log_offset=0
         self.csv_file=(self.session/'samples.csv').open('w',encoding='utf-8-sig',newline='')
@@ -133,6 +135,7 @@ class Center:
         matches['adapter']=self.pid_file(self.analog/'adapter.pid',adapter_executable(config))
         matches['labels']=self.labels_pid()
         windows=winprobe.windows(); result={}
+        self.remember_video_window(windows,matches.get('gamescrcpy'))
         titles={'gamescrcpy':lambda s:s.startswith('Phone - ') or s=='GameScrcpy',
                 'adapter':lambda s:s=='双摇杆模拟触控 · 超燃竞技场样本',
                 'labels':lambda s:s.startswith('手柄名称提示'),
@@ -166,6 +169,22 @@ class Center:
         result['video_minimized']=any(w['pid']==matches.get('gamescrcpy') and w['title']=='Phone - '+config['serial'] and w['minimized'] for w in windows)
         result['controllers']=self.controller.read()
         return result
+    def remember_video_window(self,windows,pid):
+        if self.editing_profile:return
+        video=next((w for w in windows if pid and w['pid']==pid and
+                    w['title']=='Phone - '+self.config['serial']),None)
+        hwnd=video['hwnd'] if video else None
+        saved=self.video_layout.saved if hwnd!=self.video_layout.handle else None
+        geometry=winprobe.video_geometry(hwnd,saved) if hwnd else None
+        action=self.video_layout.observe(hwnd,geometry,time.monotonic())
+        if not action:return
+        kind,value=action
+        if kind=='save':self.save_preference('video_window_layout',value)
+        elif winprobe.restore_video_geometry(hwnd,value):
+            self.event('已恢复投屏窗口位置与大小','info')
+        else:
+            self.video_layout.handle=None
+            self.event('投屏窗口布局恢复失败，下次采样重试','warn')
     def labels_pid(self):
         source=self.phase/'evidence/controller-labels.pid'
         try:

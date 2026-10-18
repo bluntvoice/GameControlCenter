@@ -78,6 +78,44 @@ def responds(hwnd,timeout=180):
 def show(hwnd):
     user.ShowWindow(hwnd,9); return bool(user.SetForegroundWindow(hwnd))
 
+class MonitorInfo(C.Structure):
+    _fields_=[('size',W.DWORD),('monitor',W.RECT),('work',W.RECT),('flags',W.DWORD)]
+
+user.GetWindowRect.argtypes=[W.HWND,C.POINTER(W.RECT)]
+user.GetClientRect.argtypes=[W.HWND,C.POINTER(W.RECT)]
+user.IsZoomed.argtypes=[W.HWND]
+user.MonitorFromRect.argtypes=[C.POINTER(W.RECT),W.DWORD];user.MonitorFromRect.restype=W.HANDLE
+user.GetMonitorInfoW.argtypes=[W.HANDLE,C.POINTER(MonitorInfo)]
+user.SetWindowPos.argtypes=[W.HWND,W.HWND,C.c_int,C.c_int,C.c_int,C.c_int,W.UINT]
+user.GetDpiForWindow.argtypes=[W.HWND];user.GetDpiForWindow.restype=W.UINT
+
+def video_geometry(hwnd,saved=None):
+    rect=W.RECT();client=W.RECT()
+    if not user.GetWindowRect(hwnd,C.byref(rect)) or not user.GetClientRect(hwnd,C.byref(client)):return None
+    if rect.right<=rect.left or rect.bottom<=rect.top or client.right<=0 or client.bottom<=0:return None
+    info=MonitorInfo();info.size=C.sizeof(info)
+    if not user.GetMonitorInfoW(user.MonitorFromRect(C.byref(rect),2),C.byref(info)):return None
+    m=info.monitor
+    fullscreen=rect.left<=m.left+2 and rect.top<=m.top+2 and rect.right>=m.right-2 and rect.bottom>=m.bottom-2
+    normal=bool(user.IsWindowVisible(hwnd)) and not (user.IsIconic(hwnd) or user.IsZoomed(hwnd) or fullscreen)
+    dpi=user.GetDpiForWindow(hwnd) or 96
+    if saved:
+        sx,sy,sw,sh=saved['rect'];target=W.RECT(round(sx),round(sy),round(sx+sw),round(sy+sh))
+        monitor=user.MonitorFromRect(C.byref(target),2)
+        if user.GetMonitorInfoW(monitor,C.byref(info)):
+            try:
+                dx=W.UINT();dy=W.UINT();shcore=C.WinDLL('shcore')
+                shcore.GetDpiForMonitor.argtypes=[W.HANDLE,C.c_int,C.POINTER(W.UINT),C.POINTER(W.UINT)]
+                if shcore.GetDpiForMonitor(monitor,0,C.byref(dx),C.byref(dy))==0:dpi=dx.value
+            except (OSError,AttributeError):pass
+    w=info.work
+    return dict(rect=[rect.left,rect.top,rect.right-rect.left,rect.bottom-rect.top],
+                client=[client.right,client.bottom],work=[w.left,w.top,w.right-w.left,w.bottom-w.top],dpi=dpi,normal=normal)
+
+def restore_video_geometry(hwnd,rect):
+    # NOZORDER | NOACTIVATE: restore without stealing focus or making it topmost.
+    return bool(user.SetWindowPos(hwnd,None,*rect,0x14))
+
 class Pad(C.Structure):
     _fields_=[('buttons',W.WORD),('lt',C.c_ubyte),('rt',C.c_ubyte),
               ('lx',C.c_short),('ly',C.c_short),('rx',C.c_short),('ry',C.c_short)]

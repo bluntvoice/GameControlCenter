@@ -18,7 +18,8 @@ class LayoutTests(unittest.TestCase):
         saved=geometry();memory=VideoLayoutMemory(saved)
         large=geometry(rect=[0,0,2200,1100],client=[2160,1060])
         self.assertEqual(memory.observe(11,large,0),('restore',saved['rect']))
-        self.assertIsNone(memory.observe(11,large,1))
+        self.assertEqual(memory.observe(11,large,1),('restore',saved['rect']))
+        self.assertIsNone(memory.observe(11,saved,1.5))
         memory.observe(None,None,2)
         self.assertEqual(memory.observe(12,large,3),('restore',saved['rect']))
 

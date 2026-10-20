@@ -66,11 +66,13 @@ class TrayIcon:
             user.AppendMenuW(menu,8 if self.app.mini_visible else 0,102,'状态悬浮窗')
             with self.app.backend.lock:labels=bool(self.app.backend.local.get('labels',{}).get('running'))
             user.AppendMenuW(menu,(8 if labels else 0)|(1 if self.app.backend.busy else 0),103,'按键标识')
+            user.AppendMenuW(menu,1 if self.app.backend.busy else 0,104,'停止连接')
+            user.AppendMenuW(menu,1 if self.app.backend.busy else 0,105,'恢复连接')
             user.AppendMenuW(menu,0x800,0,None);user.AppendMenuW(menu,0,199,'退出控制台')
             user.SetForegroundWindow(self.hwnd)
             command=user.TrackPopupMenu(menu,0x100|2,point.x,point.y,0,self.hwnd,None)
             user.PostMessageW(self.hwnd,0,0,0)
-            actions={100:'show',101:'hide',102:'mini',103:'labels',199:'quit'}
+            actions={100:'show',101:'hide',102:'mini',103:'labels',104:'disconnect',105:'connect',199:'quit'}
             if command in actions:self.commands.put(actions[command])
         finally:user.DestroyMenu(menu)
     def drain(self):
@@ -84,9 +86,11 @@ class TrayIcon:
             elif command=='hide':self.app.minimize_main()
             elif command=='mini':self.app.toggle_mini()
             elif command=='labels':self.app.action('切换手柄提示',self.app.backend.toggle_labels)
+            elif command=='disconnect':self.app.action('停止连接',self.app.backend.stop_connection)
+            elif command=='connect':self.app.action('恢复连接',lambda:self.app.backend.request_pad('start'))
             elif command=='quit':self.app.quit();return False
     def update(self,local,phone):
-        battery=(phone.get('battery') or {}).get('percent');pad='手柄已连' if local.get('controllers') else '手柄未连'
+        battery=(phone.get('battery') or {}).get('percent');pad='连接已停止' if local.get('input_disconnected') else '手柄已连' if local.get('controllers') else '手柄未连'
         state=local.get('adapter',{}).get('state','读取中');fps=local.get('screen_fps')
         tip=f'手机游戏控制台\n{state} · {pad}\n手机 {battery if battery is not None else "—"}% · 投屏 FPS {fps if fps is not None else "—"}'
         if tip!=self.last_tip:

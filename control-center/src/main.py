@@ -45,14 +45,17 @@ class App:
         self.version_label.place(relx=1,x=-24,y=24,anchor='e')
         tk.Label(header,text='连接 / 输入 / 帧率',font=('Bahnschrift',10),fg='#9FB8D0',bg=INK).place(relx=1,x=-24,y=49,anchor='e')
         bar=tk.Frame(self.root,bg=BG);bar.pack(fill='x',padx=18,pady=(12,8))
-        for col in range(6):bar.columnconfigure(col,weight=1,uniform='actions')
+        for col in range(7):bar.columnconfigure(col,weight=1,uniform='actions')
         self.button(bar,'一键准备',lambda:self.action('一键准备',self.backend.prepare),BLUE).grid(row=0,column=0,sticky='ew',padx=(0,7))
-        self.button(bar,'恢复自动控制',lambda:self.action('恢复自动控制',lambda:self.backend.request_pad('start')),TEAL).grid(row=0,column=1,sticky='ew',padx=(0,7))
+        self.connect_button=self.button(bar,'恢复自动控制',lambda:self.action('恢复连接',lambda:self.backend.request_pad('start')),TEAL)
+        self.connect_button.grid(row=0,column=1,sticky='ew',padx=(0,7))
         self.button(bar,'暂停控制',lambda:self.action('暂停控制',lambda:self.backend.request_pad('pause')),WHITE,INK).grid(row=0,column=2,sticky='ew',padx=(0,7))
         self.mini_button=self.button(bar,'显示悬浮窗',self.toggle_mini,WHITE,INK)
-        self.mini_button.grid(row=0,column=3,sticky='ew',padx=(0,7))
-        self.button(bar,'最小化',self.minimize_main,WHITE,INK).grid(row=0,column=4,sticky='ew',padx=(0,7))
-        self.button(bar,'连接手机',lambda:self.action('连接手机',self.backend.connect_phone),WHITE,INK).grid(row=0,column=5,sticky='ew')
+        self.disconnect_button=self.button(bar,'停止连接',lambda:self.action('停止连接',self.backend.stop_connection),WHITE,RED)
+        self.disconnect_button.grid(row=0,column=3,sticky='ew',padx=(0,7))
+        self.mini_button.grid(row=0,column=4,sticky='ew',padx=(0,7))
+        self.button(bar,'最小化',self.minimize_main,WHITE,INK).grid(row=0,column=5,sticky='ew',padx=(0,7))
+        self.button(bar,'连接手机',lambda:self.action('连接手机',self.backend.connect_phone),WHITE,INK).grid(row=0,column=6,sticky='ew')
         self.chain=tk.Canvas(self.root,height=43,bg=BG,highlightthickness=0);self.chain.pack(fill='x',padx=18)
         schemebar=tk.Frame(self.root,bg=BG);schemebar.pack(fill='x',padx=18,pady=(0,6))
         tk.Label(schemebar,text='当前方案',font=SMALL,bg=BG,fg=INK).pack(side='left')
@@ -192,6 +195,9 @@ class App:
         except queue.Empty:pass
         with self.backend.lock:
             local=dict(self.backend.local);phone=dict(self.backend.phone);series=list(self.backend.series)
+        disconnected=bool(self.backend.config.get('input_disconnected'))
+        self.connect_button.configure(text='恢复连接' if disconnected else '恢复自动控制',state='disabled' if self.backend.busy else 'normal')
+        self.disconnect_button.configure(state='disabled' if self.backend.busy else 'normal')
         self.mini.update(local,phone)
         self.refresh_schemes()
         self.tray.update(local,phone)
@@ -217,7 +223,7 @@ class App:
         if battery.get('temperature') is not None:battery_text+=f"\n{battery['temperature']:.1f} °C"
         if battery and (not phone.get('connected') or time.time()-battery.get('at',0)>35):battery_text+='（上次）'
         self.battery_detail.configure(text=battery_text)
-        self.draw_chain(local,phone);self.update_pad_status(local.get('controllers',[]));self.draw_chart(series,local,phone)
+        self.draw_chain(local,phone);self.update_pad_status(local.get('controllers',[]),disconnected);self.draw_chart(series,local,phone)
         cleanup=read_json(self.backend.home/'cleanup-result.json',{})
         self.cleanup_label.configure(text='原始迁移资料和旧候选保留在备份中；新制作的方案独立存入方案库。')
         self.root.after(350,self.tick)
@@ -232,9 +238,9 @@ class App:
             color=TEAL if ready else MUTED
             canvas.create_oval(x,15,x+10,25,fill=color,outline='')
             canvas.create_text(x+18,20,text=name+(' · 就绪' if ready else ' · 可选' if i==2 else ' · 待连接' if i<3 else ' · 已暂停'),anchor='w',font=SMALL,fill=color)
-    def update_pad_status(self,controllers):
+    def update_pad_status(self,controllers,disconnected=False):
         pad=controllers[0] if controllers else {}
-        self.pad_text.configure(text=f"XInput 手柄 {pad.get('index')} 已连接 · 共 {len(controllers)} 个" if controllers else '未检测到手柄',fg=TEAL if controllers else AMBER)
+        self.pad_text.configure(text='已停止连接 · 不读取手柄' if disconnected else f"XInput 手柄 {pad.get('index')} 已连接 · 共 {len(controllers)} 个" if controllers else '未检测到手柄',fg=MUTED if disconnected else TEAL if controllers else AMBER)
     def draw_chart(self,rows,local,phone):
         fps=local.get('screen_fps'); game=phone.get('fps')
         self.client_value.configure(text='投屏 FPS  '+(str(fps) if fps is not None else '—'))

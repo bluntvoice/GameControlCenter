@@ -46,7 +46,7 @@ class CleanupTests(unittest.TestCase):
         transport=Mock();transport.info=dict(width=2608,height=1200)
         transport.frame.side_effect=TimeoutError('timed out')
         transport.close.side_effect=RuntimeError('bad final ACK')
-        with patch.object(pad_adapter,'antimicrox_gate',return_value=dict(allow=True)),patch.object(pad_adapter,'find_video',return_value=123),patch('subprocess.run',return_value=SimpleNamespace(returncode=0,stdout='{"handle":123}',stderr='')),patch.object(pad_adapter,'Transport',return_value=transport):
+        with patch.object(pad_adapter,'antimicrox_gate',return_value=dict(allow=True)),patch.object(pad_adapter,'find_video',return_value=123),patch.object(pad_adapter,'run_command',return_value=SimpleNamespace(returncode=0,stdout='{"handle":123}',stderr='')),patch.object(pad_adapter,'Transport',return_value=transport):
             worker.run()
         events=[]
         while not worker.events.empty():events.append(worker.events.get_nowait())

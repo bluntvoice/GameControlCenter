@@ -97,7 +97,7 @@ class MiniStatus:
     def update(self,local,phone):
         battery=(phone.get('battery') or {}).get('percent')
         phone_text=('手机 '+str(battery)+'%' if battery is not None else '手机已连') if phone.get('connected') else '手机未连'
-        pad='手柄已连' if local.get('controllers') else '手柄未连'
+        pad='连接已停止' if local.get('input_disconnected') else '手柄已连' if local.get('controllers') else '手柄未连'
         adapter=local.get('adapter',{});projection=local.get('gamescrcpy',{})
         state=adapter.get('state','读取中');state={'发送挂起':'已挂起','手柄控制中':'控制中','输入控制中':'控制中','等待投屏前台':'自动等待'}.get(state,state)
         video='投屏未连接' if not local.get('video_window') else '投屏正常' if projection.get('tone')=='ok' else '投屏'+projection.get('state','读取中')
@@ -106,5 +106,5 @@ class MiniStatus:
         good=phone.get('connected') and projection.get('tone')=='ok' and adapter.get('tone') not in ('bad','warn')
         self.body.configure(text=f'{phone_text} · {pad} · {video} · FPS {screen} / {game_text}',fg=FG if good else WARN)
         disabled=self.app.backend.busy or self.app.backend.editing_profile
-        self.adapter_button.configure(text=state,state='disabled' if disabled else 'normal',fg=FG if adapter.get('tone') not in ('bad','warn') else WARN)
+        self.adapter_button.configure(text='恢复连接' if local.get('input_disconnected') else state,state='disabled' if disabled else 'normal',fg=FG if adapter.get('tone') not in ('bad','warn') else WARN)
         self.labels_button.configure(text='隐藏按键标识' if local.get('labels',{}).get('running') else '显示按键标识',state='disabled' if self.app.backend.busy else 'normal')

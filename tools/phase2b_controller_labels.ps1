@@ -145,7 +145,8 @@ $timer.Add_Tick({
     $status=Get-Content -LiteralPath $analogStatus -Raw -Encoding utf8 | ConvertFrom-Json
     if($status.armed -and $status.pid -eq $foregroundPid -and ((Get-Date)-[datetime]$status.at).TotalSeconds -lt 2){
      $owner=Get-CimInstance Win32_Process -Filter "ProcessId=$foregroundPid" -ErrorAction Stop
-     $analogActive=$owner.CommandLine -like '*tools*analog*pad_adapter.py*'
+     $adapterExe=Join-Path $project 'tools/analog/GamePadAdapter.exe'
+     $analogActive=($owner.CommandLine -like '*tools*analog*pad_adapter.py*' -or $owner.ExecutablePath -eq $adapterExe)
      if($analogActive){$script:analogPid=$foregroundPid}
     }
    }catch{}

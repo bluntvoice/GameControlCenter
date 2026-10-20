@@ -346,7 +346,7 @@ class ProfileEditor:
         if hasattr(self.app,'mini'):self.app.mini.set_visible(self.app.mini_visible)
         self.app.show_main()
         self.note.set('已结束摆放，草稿已暂存；点击“保存方案”写入方案库。')
-        if self.resume_after if resume is None else resume:
+        if (self.resume_after if resume is None else resume) and not self.backend.config.get('input_disconnected'):
             self.app.action('恢复自动控制',lambda:self.backend.request_pad('start'))
     def shutdown(self):
         if self.overlay:self.finish(resume=False)

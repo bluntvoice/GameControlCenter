@@ -39,16 +39,24 @@ class VideoLayoutMemory:
     def __init__(self,saved=None):
         self.saved=saved if valid_layout(saved) else None
         self.handle=None;self.candidate=None;self.since=0;self.ready=0
+        self.restore_target=None
 
     def observe(self,handle,snapshot,now):
         if not handle:
-            self.handle=None;self.candidate=None
+            self.handle=None;self.candidate=None;self.restore_target=None
             return None
         if not snapshot or not snapshot.get('normal'):return None
         if handle!=self.handle:
             self.handle=handle;self.candidate=None;self.ready=now+2
-            return ('restore',restore_rect(self.saved,snapshot))
-        if now<self.ready:return None
+            self.restore_target=restore_rect(self.saved,snapshot)
+            return ('restore',self.restore_target)
+        if now<self.ready:
+            # Qt can reapply its own remembered rectangle after its window appears.
+            # Keep our target during startup, without recording that transient size.
+            if self.restore_target and any(abs(a-b)>3 for a,b in zip(snapshot['rect'],self.restore_target)):
+                return ('restore',self.restore_target)
+            return None
+        self.restore_target=None
         value={key:snapshot[key] for key in ('rect','work','client','dpi')}
         if not valid_layout(value):return None
         if value!=self.candidate:

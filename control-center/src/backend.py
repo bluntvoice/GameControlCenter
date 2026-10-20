@@ -8,6 +8,7 @@ import queue
 import secrets
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -81,7 +82,7 @@ class Center:
         self.updates=queue.Queue(); self.events=[]; self.local={}; self.phone={}; self.series=[]
         self.busy=False; self.action=''; self.phone_probe=Phone(self.config)
         self.tracker=Tracker(); self.fps_process=None; self.last_signatures={}; self.low_count=0
-        self.controller=winprobe.Controller()
+        self.controller=None; self.input_lock=threading.RLock()
         self.video_layout=VideoLayoutMemory(self.config.get('video_window_layout'))
         self.helper_stop=self.runtime/f'fps-{os.getpid()}.stop'
         self.known_pids={}; self.last_log_path=None; self.log_offset=0
@@ -105,10 +106,16 @@ class Center:
             thread=threading.Thread(target=target,daemon=True); self.threads.append(thread); thread.start()
     def ps(self,script,*args,timeout=12):
         cmd=[self.config['powershell'],'-NoProfile','-File',str(script),*map(str,args)]
-        result=subprocess.run(cmd,capture_output=True,encoding='utf-8',errors='replace',
-            timeout=timeout,creationflags=subprocess.CREATE_NO_WINDOW)
-        if result.returncode: raise RuntimeError((result.stderr or result.stdout).strip()[:300])
-        return result.stdout.strip()
+        # Launched background apps can inherit the shell's output handles. Pipes
+        # make communicate() wait for those apps even after PowerShell has exited.
+        with tempfile.TemporaryFile() as output,tempfile.TemporaryFile() as errors:
+            result=subprocess.run(cmd,stdout=output,stderr=errors,
+                timeout=timeout,creationflags=subprocess.CREATE_NO_WINDOW)
+            output.seek(0);errors.seek(0)
+            stdout=output.read().decode('utf-8-sig',errors='replace')
+            stderr=errors.read().decode('utf-8-sig',errors='replace')
+        if result.returncode: raise RuntimeError((stderr or stdout).strip()[:300])
+        return stdout.strip()
     def start_fps_watch(self):
         log=(self.session/'fps-watch.log').open('w',encoding='utf-8')
         self.fps_process=subprocess.Popen([self.config['powershell'],'-NoProfile','-File',
@@ -167,8 +174,30 @@ class Center:
         result['fps_source']=fps.get('state','采样启动中')
         result['video_window']=any(w['pid']==matches.get('gamescrcpy') and w['title']=='Phone - '+config['serial'] for w in windows)
         result['video_minimized']=any(w['pid']==matches.get('gamescrcpy') and w['title']=='Phone - '+config['serial'] and w['minimized'] for w in windows)
-        result['controllers']=self.controller.read()
+        result['controllers']=self.read_controllers()
+        result['input_disconnected']=bool(self.config.get('input_disconnected'))
+        if result['input_disconnected']:
+            result['adapter'].update(state='停止连接中' if result['adapter']['running'] else '已停止连接',
+                tone='warn' if result['adapter']['running'] else 'muted',armed=False,
+                detail='不读取手柄；点击“恢复连接”重新启用')
         return result
+    def read_controllers(self):
+        # The stop action waits for an in-flight read before it acknowledges.
+        with self.input_lock:
+            if self.config.get('input_disconnected'):return []
+            if self.controller is None:self.controller=winprobe.Controller()
+            return self.controller.read()
+    def set_input_disconnected(self,value):
+        with self.input_lock:
+            self.save_preference('input_disconnected',bool(value))
+            with self.lock:
+                self.local['input_disconnected']=bool(value)
+                if value:self.local['controllers']=[]
+    def stop_connection(self):
+        # Persist first: a failed shutdown must not restart monitoring next launch.
+        self.set_input_disconnected(True)
+        self.request_pad('quit')
+        self.event('已停止连接：后台适配器已退出，控制台不再读取手柄；界面与托盘保留','ok')
     def remember_video_window(self,windows,pid):
         if self.editing_profile:return
         video=next((w for w in windows if pid and w['pid']==pid and
@@ -236,7 +265,10 @@ class Center:
         while not self.stop.is_set():
             try:
                 sample=self.snapshot_local()
-                with self.lock: self.local=sample
+                with self.lock:
+                    if self.config.get('input_disconnected'):
+                        sample['controllers']=[];sample['input_disconnected']=True
+                    self.local=sample
                 for key in ['gamescrcpy','adapter','labels','antimicrox']:
                     entry=sample[key]; signature=(entry['state'],entry.get('pid'),entry.get('exit_code'))
                     if self.last_signatures.get(key)!=signature:
@@ -247,7 +279,8 @@ class Center:
                 connected=len(sample['controllers'])
                 if self.last_signatures.get('controller')!=connected:
                     self.last_signatures['controller']=connected
-                    self.event('手柄已连接' if connected else '手柄未连接','ok' if connected else 'warn')
+                    self.event('已停止手柄检测' if sample.get('input_disconnected') else '手柄已连接' if connected else '手柄未连接',
+                               'muted' if sample.get('input_disconnected') else 'ok' if connected else 'warn')
                 self.updates.put(('local',sample))
             except Exception as ex: self.event('本机状态采样失败：'+str(ex),'warn')
             self.stop.wait(1)
@@ -326,6 +359,7 @@ class Center:
     def open_component(self,key,show=True):
         with self.lock: record=dict(self.local.get(key,{}))
         if key=='adapter':
+            if self.config.get('input_disconnected'):raise RuntimeError('连接已停止，请点击“恢复连接”')
             self.ps(self.project/'tools/analog/launch.ps1',*(['-ShowWindow'] if show else []));return
         if key=='labels':
             self.set_labels(True);return
@@ -372,7 +406,7 @@ class Center:
         if self.editing_profile:raise RuntimeError('请先保存或结束方案编辑，再切换方案')
         self.profiles.load(ident)  # Verify the target before interrupting current input.
         status=read_json(self.analog/'status.json',{})
-        resume=not status.get('manual_pause',False)
+        resume=not self.config.get('input_disconnected') and not status.get('manual_pause',False)
         self.request_pad('pause')
         entry=self.profiles.select(ident)
         self.save_preferences(dict(profile=Path(entry['path']).name,profile_display_name=entry['name']))
@@ -394,26 +428,44 @@ class Center:
     def prepare(self):
         try: self.connect_phone()
         except Exception as ex: self.event('手机尚未连通：'+str(ex),'warn')
-        self.open_component('gamescrcpy'); self.open_component('adapter',show=False)
+        self.open_component('gamescrcpy'); self.request_pad('start')
         self.set_labels(self.config.get('labels_enabled',True))
         self.event('软件已准备。切回投屏按当前摇杆方向继续；已按住按钮须松开再按。Start 已释放','info')
     def request_pad(self,command):
+        if command=='start' and self.config.get('input_disconnected'):
+            self.set_input_disconnected(False)
+            try:return self.request_pad(command)
+            except Exception:
+                self.set_input_disconnected(True)
+                try:self.request_pad('quit')
+                except Exception as cleanup:self.event('恢复失败，后台适配器尚待退出：'+str(cleanup),'bad')
+                raise
         pid=self.pid_file(self.analog/'adapter.pid',adapter_executable(self.config))
         if not pid:
-            if command=='pause': return
+            if command in ('pause','quit'): return
             self.open_component('adapter',show=False)
             for _ in range(40):
-                if self.stop.wait(.1): return
+                if self.stop.wait(.1): raise RuntimeError('恢复连接已中止')
                 pid=self.pid_file(self.analog/'adapter.pid',adapter_executable(self.config))
                 if pid: break
             if not pid: raise RuntimeError('适配器尚未启动')
-        winprobe.user.AllowSetForegroundWindow.argtypes=[winprobe.W.DWORD]
-        winprobe.user.AllowSetForegroundWindow(pid)
+        if command!='quit':
+            winprobe.user.AllowSetForegroundWindow.argtypes=[winprobe.W.DWORD]
+            winprobe.user.AllowSetForegroundWindow(pid)
         request_id=secrets.token_hex(12)
         atomic_json(self.analog/'control-request.json',dict(id=request_id,command=command,at=time.time()))
+        if command=='quit':
+            process=winprobe.Process(pid)
+            try:
+                deadline=time.monotonic()+9
+                while process.alive() and time.monotonic()<deadline:
+                    if self.stop.wait(.1):raise RuntimeError('停止连接尚未完成')
+                if process.alive():raise RuntimeError('后台适配器尚未退出，请重试“停止连接”；手柄检测已停止')
+            finally:process.close()
+            return
         deadline=time.monotonic()+9
         while time.monotonic()<deadline:
-            if self.stop.wait(.15): return
+            if self.stop.wait(.15): raise RuntimeError('连接操作已中止')
             status=read_json(self.analog/'status.json',{})
             if status.get('pid')!=pid or status.get('control_request_id')!=request_id: continue
             if command=='pause' and not status.get('armed') and not status.get('channel_active'): return

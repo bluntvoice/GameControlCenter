@@ -8,6 +8,7 @@ import secrets
 import socket
 import struct
 import subprocess
+import threading
 import time
 
 from app_config import project_root,load_config
@@ -17,9 +18,31 @@ PHASE=ROOT/'phase2b-20261015'
 ADB=Path(CONFIG['adb'])
 SERIAL=CONFIG['serial']
 NO_WINDOW=getattr(subprocess,'CREATE_NO_WINDOW',0)
+COMMAND_CONTEXT=threading.local()
+
+def run_command(command,**kwargs):
+    """Allow Pause/Stop to cancel a slow connection command on its worker thread."""
+    cancel=getattr(COMMAND_CONTEXT,'cancel',None)
+    if cancel is None:return subprocess.run(command,**kwargs)
+    timeout=kwargs.pop('timeout',10)
+    if cancel.is_set():raise RuntimeError('连接操作已取消')
+    if kwargs.pop('capture_output',False):kwargs.update(stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    started=time.monotonic()
+    process=subprocess.Popen(command,**kwargs)
+    try:
+        while True:
+            if cancel.is_set():raise RuntimeError('连接操作已取消')
+            if time.monotonic()-started>=timeout:raise subprocess.TimeoutExpired(command,timeout)
+            try:
+                out,err=process.communicate(timeout=.1)
+                return subprocess.CompletedProcess(command,process.returncode,out,err)
+            except subprocess.TimeoutExpired:pass
+    finally:
+        if process.poll() is None:
+            process.kill();process.communicate()
 
 def adb(*args,timeout=10):
-    p=subprocess.run([str(ADB),'-s',SERIAL,*args],capture_output=True,
+    p=run_command([str(ADB),'-s',SERIAL,*args],capture_output=True,
                      encoding='utf-8',errors='replace',timeout=timeout,creationflags=NO_WINDOW)
     if p.returncode:
         raise RuntimeError(p.stderr.strip() or p.stdout.strip())

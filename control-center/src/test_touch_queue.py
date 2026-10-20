@@ -52,7 +52,7 @@ class WorkerReplayTests(unittest.TestCase):
                 if len(frames)==1:first.set();release.wait(1)
                 elif 6 in points:done.set()
                 elif done.is_set():worker.stop.set()
-        with patch.object(pad_adapter,'antimicrox_gate',return_value=dict(allow=True)),patch.object(pad_adapter,'find_video',return_value=123),patch('subprocess.run',return_value=SimpleNamespace(returncode=0,stdout='{"handle":123}',stderr='')),patch.object(pad_adapter,'Transport',return_value=Transport()):
+        with patch.object(pad_adapter,'antimicrox_gate',return_value=dict(allow=True)),patch.object(pad_adapter,'find_video',return_value=123),patch.object(pad_adapter,'run_command',return_value=SimpleNamespace(returncode=0,stdout='{"handle":123}',stderr='')),patch.object(pad_adapter,'Transport',return_value=Transport()):
             thread=threading.Thread(target=worker.run);thread.start()
             try:
                 self.assertTrue(first.wait(1))

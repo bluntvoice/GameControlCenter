@@ -124,7 +124,7 @@ class ProfileEditorTests(unittest.TestCase):
         for controls in [[control('A'),control('A')],[control('Unknown')],[control('A',float('nan'))],[control('A',1.2)]]:
             with self.assertRaises(ValueError):self.store.save('不允许',controls)
     def test_switch_releases_then_changes_then_resumes(self):
-        entry=self.store.save('第二套',[control('A')]);center=Center.__new__(Center)
+        entry=self.store.save('第二套',[control('A')]);center=Center.__new__(Center);center.config={}
         center.editing_profile=False;center.profiles=self.store;center.analog=self.root
         center.save_preferences=Mock();center.event=Mock();calls=[]
         def request(command):

@@ -15,7 +15,7 @@ from tkinter import ttk
 
 from pad_core import Mapper,recenter_axis_pair
 from mouse_touch import MouseTouch,MouseChannels,fit_rect,merge
-from pad_transport import ROOT,PHASE,Transport,touches_none,NeutralRequired
+from pad_transport import ROOT,PHASE,Transport,touches_none,NeutralRequired,run_command,COMMAND_CONTEXT
 from touch_queue import TouchQueue
 
 from app_config import load_config
@@ -175,7 +175,7 @@ def antimicrox_processes():
                 "windows=$_.MainWindowHandle.ToInt64();visible=$($_.MainWindowHandle -ne 0)} }); "
                 "if($rows.Count -eq 0){exit 0}; "
                 "$rows | ConvertTo-Json -Compress -AsArray")
-    p=subprocess.run([str(ps),'-NoProfile','-Command',expression],capture_output=True,
+    p=run_command([str(ps),'-NoProfile','-Command',expression],capture_output=True,
         encoding='utf-8',errors='replace',creationflags=subprocess.CREATE_NO_WINDOW,timeout=15)
     text=p.stdout.strip()
     if p.returncode: raise RuntimeError('无法检查 AntiMicroX 进程；已停止启用以避免重复输入')
@@ -198,7 +198,7 @@ def antimicrox_selection():
                 f"& '{script}' -ProcessName antimicrox -Action snapshot | ConvertFrom-Json | "
                 "Where-Object { $_.Id -like '*configBox' } | Select-Object -ExpandProperty Value")
     try:
-        p=subprocess.run([str(ps),'-NoProfile','-Command',expression],capture_output=True,
+        p=run_command([str(ps),'-NoProfile','-Command',expression],capture_output=True,
             encoding='utf-8',errors='replace',creationflags=subprocess.CREATE_NO_WINDOW,timeout=20)
     except subprocess.TimeoutExpired:
         return 'unreadable',''
@@ -344,6 +344,7 @@ class Worker:
             self.snapshots.offer({},time.monotonic(),active=False)
     def run(self):
         transport=None
+        COMMAND_CONTEXT.cancel=self.stop
         try:
             # UI Automation must run off the Tk thread; its root enumeration may
             # query our own visible window and requires that thread to keep pumping.
@@ -351,7 +352,7 @@ class Worker:
             if not decision['allow']:
                 raise RuntimeError(antimicrox_gate_message(decision))
             import subprocess
-            surface_result=subprocess.run([CONFIG['powershell'],
+            surface_result=run_command([CONFIG['powershell'],
                 '-NoProfile','-File',str(ROOT/'tools/analog/video_surface.ps1'),
                 '-VideoHandle',str(find_video())],capture_output=True,encoding='utf-8',errors='replace',
                 timeout=8,creationflags=subprocess.CREATE_NO_WINDOW)
@@ -391,6 +392,7 @@ class Worker:
         except Exception as ex:
             self.events.put(('error',str(ex)))
         finally:
+            COMMAND_CONTEXT.cancel=None
             try:
                 if transport: transport.close()
             except Exception as ex:

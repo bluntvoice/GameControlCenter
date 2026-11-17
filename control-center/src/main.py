@@ -47,7 +47,7 @@ class App:
         bar=tk.Frame(self.root,bg=BG);bar.pack(fill='x',padx=18,pady=(12,8))
         for col in range(7):bar.columnconfigure(col,weight=1,uniform='actions')
         self.button(bar,'一键准备',lambda:self.action('一键准备',self.backend.prepare),BLUE).grid(row=0,column=0,sticky='ew',padx=(0,7))
-        self.connect_button=self.button(bar,'恢复自动控制',lambda:self.action('恢复连接',lambda:self.backend.request_pad('start')),TEAL)
+        self.connect_button=self.button(bar,'恢复自动控制',lambda:self.action('恢复连接',self.backend.resume_connection),TEAL)
         self.connect_button.grid(row=0,column=1,sticky='ew',padx=(0,7))
         self.button(bar,'暂停控制',lambda:self.action('暂停控制',lambda:self.backend.request_pad('pause')),WHITE,INK).grid(row=0,column=2,sticky='ew',padx=(0,7))
         self.mini_button=self.button(bar,'显示悬浮窗',self.toggle_mini,WHITE,INK)
@@ -216,7 +216,8 @@ class App:
                 text='跟随投屏自动显隐；不占任务栏' if enabled else '点击下方开启；记住你的开关选择'
             else:text='独立备用；不加入一键准备，不与主通路重复输出'
             detail.configure(text=text)
-        self.phone_state.configure(text='手机已连接' if phone.get('connected') else '等待手机',fg=TEAL if phone.get('connected') else AMBER)
+        address=self.backend.config.get('phone_address',self.backend.config['serial'])
+        self.phone_state.configure(text=('手机已连接' if phone.get('connected') else '等待手机')+'\n'+address,fg=TEAL if phone.get('connected') else AMBER)
         battery=phone.get('battery') or {}
         self.battery.configure(text=str(battery['percent'])+'%' if 'percent' in battery else '—')
         battery_text=('充电中' if battery.get('charging') else '未充电') if battery else '等待电量'

@@ -87,7 +87,7 @@ class TrayIcon:
             elif command=='mini':self.app.toggle_mini()
             elif command=='labels':self.app.action('切换手柄提示',self.app.backend.toggle_labels)
             elif command=='disconnect':self.app.action('停止连接',self.app.backend.stop_connection)
-            elif command=='connect':self.app.action('恢复连接',lambda:self.app.backend.request_pad('start'))
+            elif command=='connect':self.app.action('恢复连接',self.app.backend.resume_connection)
             elif command=='quit':self.app.quit();return False
     def update(self,local,phone):
         battery=(phone.get('battery') or {}).get('percent');pad='连接已停止' if local.get('input_disconnected') else '手柄已连' if local.get('controllers') else '手柄未连'

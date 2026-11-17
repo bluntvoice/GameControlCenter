@@ -49,7 +49,7 @@ class MiniStatus:
         handle=tk.Label(header,text='',bg=BG,cursor='fleur');handle.pack(side='left',fill='x',expand=True)
         button('×',app.toggle_mini).pack(side='right')
         status_row=tk.Frame(self.window,bg=BG);status_row.pack(fill='both',expand=True,padx=12,pady=(0,5))
-        self.adapter_button=tk.Button(status_row,text='读取中',command=lambda:app.action('恢复自动控制',lambda:app.backend.request_pad('start')),
+        self.adapter_button=tk.Button(status_row,text='读取中',command=lambda:app.action('恢复自动控制',app.backend.resume_connection),
             font=('Microsoft YaHei UI',9),bg=BG,fg=FG,activebackground='#29445D',activeforeground=FG,
             relief='flat',bd=0,padx=5,pady=0,cursor='hand2',takefocus=False)
         self.adapter_button.pack(side='right',padx=(5,0))

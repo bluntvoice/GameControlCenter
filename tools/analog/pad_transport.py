@@ -89,7 +89,7 @@ class Transport:
         self.remote=None
     def start(self):
         none,_=touches_none()
-        if not none: raise RuntimeError('Existing phone touch; release it before starting')
+        if not none: raise RuntimeError('手机仍有未释放触点，请松开手机屏幕和鼠标按键后重试')
         build=PHASE/'analog/build/pad-touch.jar'
         stock=ADB.parent/'scrcpy-server'
         sha=lambda path:hashlib.sha256(path.read_bytes()).hexdigest()

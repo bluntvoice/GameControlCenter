@@ -173,15 +173,15 @@ class EditorUiTests(unittest.TestCase):
         with patch.object(main,'Center',return_value=backend),patch.object(main,'TrayIcon',return_value=Mock()),patch.object(main,'running_version',return_value='0.2.3'):
             app=main.App();app.root.update()
             self.assertEqual(app.version_label.cget('text'),'v0.2.3')
-            backend.request_pad=Mock()
+            backend.request_pad=Mock();backend.resume_connection=Mock()
             app.mini.update(dict(controllers=[],adapter=dict(state='已暂停',tone='ok'),gamescrcpy=dict(tone='ok'),video_window=True),dict(connected=True))
             self.assertEqual(app.mini.adapter_button.cget('text'),'已暂停')
             self.assertEqual(app.mini.body.cget('fg'),FG)
             with patch.object(app,'action',side_effect=lambda name,action:action()):
-                app.mini.adapter_button.invoke();backend.request_pad.assert_called_once_with('start')
+                app.mini.adapter_button.invoke();backend.resume_connection.assert_called_once_with()
                 backend.editing_profile=True
                 app.mini.update({},{});app.mini.adapter_button.invoke()
-                self.assertEqual(backend.request_pad.call_count,1)
+                self.assertEqual(backend.resume_connection.call_count,1)
                 backend.editing_profile=False
             app.update_pad_status([dict(index=0)])
             self.assertIn('已连接',app.pad_text.cget('text'))

@@ -9,7 +9,8 @@ def running_version():
     folder=Path(sys.executable).resolve().parent
     try:
         release=json.loads((folder/'release.json').read_text(encoding='utf-8-sig'))
-        if release.get('development') is True and folder.name.startswith('dev-'):return '开发版'
+        if release.get('development') is True and folder.name.startswith('dev-'):
+            return '开发版'+(' '+str(release['build']) if release.get('build') else '')
         version=release['version']
         if re.fullmatch(r'\d+\.\d+\.\d+',version) and folder.name==version:return version
     except (OSError,ValueError,KeyError,TypeError):pass

@@ -19,6 +19,7 @@ from phoneprobe import Phone
 if not getattr(sys,'frozen',False):sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'tools/analog'))
 from profile_store import ProfileStore
 from app_config import load_config,adapter_executable
+from device_connection import connect_device
 
 ZONE=timezone(timedelta(hours=8))
 def stamp(): return datetime.now(ZONE).isoformat(timespec='seconds')
@@ -379,7 +380,6 @@ class Center:
         executable=Path(self.config[key]); subprocess.Popen([str(executable)],cwd=executable.parent,
             creationflags=subprocess.CREATE_NO_WINDOW)
     def connect_phone(self):
-        serial=self.config['serial']
         def run(*args,timeout=8):
             try:
                 return subprocess.run([self.config['adb'],*args],capture_output=True,
@@ -387,21 +387,32 @@ class Center:
                     creationflags=subprocess.CREATE_NO_WINDOW)
             except subprocess.TimeoutExpired as ex:
                 raise RuntimeError('手机连接超时，请检查手机 WiFi 与无线调试是否开启') from ex
-        for attempt in range(2):
-            result=run('connect',serial)
-            state=run('-s',serial,'get-state',timeout=3)
-            # "already connected" can refer to a stale OFFLINE transport.
-            # Only the device state is evidence that ADB is ready to use.
-            if state.returncode==0 and state.stdout.strip()=='device':
-                self.event('手机已连接并确认在线：'+serial,'ok');return
-            detail=(state.stderr or state.stdout or result.stderr or result.stdout).strip()
-            if 'unauthorized' in detail.lower():
-                raise RuntimeError('手机尚未授权调试，请在手机上允许此电脑连接')
-            if attempt==0:
-                self.event('手机会话未在线，正在清除旧连接并重连：'+serial,'info')
-                # Scope recovery to this phone; preserve other ADB devices and servers.
-                run('disconnect',serial,timeout=3)
-        raise RuntimeError('手机仍未在线：'+detail[:180]+'；请确认同一 WiFi、无线调试已开启，地址与端口未变化')
+        config=dict(self.config)
+        videos=[]
+        for window in winprobe.windows():
+            if not window['title'].startswith('Phone - ') or not window['visible']:continue
+            process=winprobe.Process(window['pid'])
+            try:
+                if process.path.lower()==config['gamescrcpy'].lower():videos.append(window)
+            finally:process.close()
+        if len(videos)>1:raise RuntimeError('打开了多个投屏窗口，请保留要控制的手机窗口')
+        if videos:config['serial']=videos[0]['title'][len('Phone - '):]
+        connection=connect_device(config,run,active_serial=config['serial'] if videos else None)
+        if connection['serial']!=self.config['serial']:
+            # The adapter caches its ADB target; stop it before changing the target.
+            self.request_pad('quit')
+            labels=bool(self.labels_pid())
+            if labels:self.set_labels(False)
+            self.save_preferences(connection)
+            self.phone_probe=Phone(self.config)
+            if labels:self.set_labels(True)
+        else:self.save_preferences(connection)
+        entry=self.profiles.load()
+        self.save_preferences(dict(profile=Path(entry['path']).name,profile_display_name=entry['name']))
+        self.event('手机已连接并确认在线：'+connection['phone_address'],'ok')
+    def resume_connection(self):
+        self.connect_phone()
+        self.request_pad('start')
     def switch_profile(self,ident):
         if self.editing_profile:raise RuntimeError('请先保存或结束方案编辑，再切换方案')
         self.profiles.load(ident)  # Verify the target before interrupting current input.
@@ -426,11 +437,14 @@ class Center:
         info=display_info()
         return dict(video=video['hwnd'],surface=int(json.loads(output)['handle']),width=info['width'],height=info['height'])
     def prepare(self):
-        try: self.connect_phone()
-        except Exception as ex: self.event('手机尚未连通：'+str(ex),'warn')
-        self.open_component('gamescrcpy'); self.request_pad('start')
+        self.connect_phone()
+        self.open_component('gamescrcpy')
+        if not any(w['title']=='Phone - '+self.config['serial'] and w['visible'] and not w['minimized']
+                   for w in winprobe.windows()):
+            raise RuntimeError('手机已连接，但投屏窗口尚未打开；请在 GameScrcpy 选择 '+self.config['serial']+' 开始投屏后重试')
+        self.request_pad('start')
         self.set_labels(self.config.get('labels_enabled',True))
-        self.event('软件已准备。切回投屏按当前摇杆方向继续；已按住按钮须松开再按。Start 已释放','info')
+        self.event('手机与投屏已连接；切回投屏启用输入，已按住按钮须松开再按','info')
     def request_pad(self,command):
         if command=='start' and self.config.get('input_disconnected'):
             self.set_input_disconnected(False)

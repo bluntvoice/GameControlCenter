@@ -70,6 +70,12 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(editor.draw.call_count,1)
 
 class VersionTests(unittest.TestCase):
+    def test_development_manifest_identifies_build(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)/'dev-fix';root.mkdir()
+            (root/'release.json').write_text(json.dumps(dict(development=True,build='20261027')),encoding='utf-8')
+            with patch('version_info.sys.executable',str(root/'GameControlCenter.exe')),patch('version_info.sys.frozen',True,create=True):
+                self.assertEqual(running_version(),'开发版 20261027')
     def test_reads_running_release_instead_of_shared_preferences(self):
         with tempfile.TemporaryDirectory(dir=HOME/'build/temp') as folder:
             root=Path(folder)/'0.2.3';root.mkdir();(root/'release.json').write_text(json.dumps(dict(version='0.2.3')),encoding='utf-8')

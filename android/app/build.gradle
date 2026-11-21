@@ -11,8 +11,8 @@ android {
         applicationId 'io.github.bluntvoice.androidgamepad'
         minSdk 34
         targetSdk 34
-        versionCode 7
-        versionName '0.0.7-playtest'
+        versionCode 8
+        versionName '0.0.8-playtest'
     }
 
     buildFeatures {

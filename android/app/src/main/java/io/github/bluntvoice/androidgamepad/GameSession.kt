@@ -14,6 +14,7 @@ import android.view.MotionEvent
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityWindowInfo
+import android.widget.Toast
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -38,6 +39,7 @@ object GameSession : InputManager.InputDeviceListener {
     private val mutableLog = MutableStateFlow<List<String>>(emptyList())
     val log = mutableLog.asStateFlow()
     private val controller = ControllerInput()
+    private val panelContacts = PanelContactGuard()
     private lateinit var app: Context
     lateinit var repository: ProfileRepository
         private set
@@ -45,6 +47,7 @@ object GameSession : InputManager.InputDeviceListener {
         private set
     private var overlay: GameOverlay? = null
     private var profile: Profile? = null
+    private var switchingTo: Profile? = null
     private var choice = BackendChoice.AUTO
     private var editingRequested = false
     private var deviceId: Int? = null
@@ -187,7 +190,14 @@ object GameSession : InputManager.InputDeviceListener {
 
     fun pause() = stop("等待继续控制", GameStatus.PAUSED)
 
-    fun stop(reason: String = "", status: GameStatus = GameStatus.STOPPED) {
+    fun stop(reason: String = "", status: GameStatus = GameStatus.STOPPED) =
+        stopSession(reason, status)
+
+    private fun stopSession(reason: String, status: GameStatus, afterRelease: (() -> Unit)? = null) {
+        if (afterRelease == null && switchingTo != null) {
+            switchingTo = null
+            if (reason.isNotBlank()) toast("切换失败 · $reason")
+        }
         if (releasing) {
             if (status == GameStatus.STOPPED) {
                 stopAfterRelease = true
@@ -206,6 +216,7 @@ object GameSession : InputManager.InputDeviceListener {
         region = null
         deviceId = null
         controller.reset()
+        panelContacts.reset()
         mutableInput.value = InputSnapshot()
         if (status == GameStatus.STOPPED || service == null) {
             profile = null
@@ -215,14 +226,23 @@ object GameSession : InputManager.InputDeviceListener {
         fun finish(error: String?) {
             releasing = false
             val label = when {
-                error != null -> GameStatus.ERROR
+                error != null && afterRelease == null -> GameStatus.ERROR
                 stopAfterRelease -> GameStatus.STOPPED
+                error != null -> GameStatus.PAUSED
                 else -> status
             }
             stopAfterRelease = false
             val detail = error ?: reason
             Log.i(TAG, "session_end status=$label detail=$detail")
             publish(label, detail)
+            if (afterRelease != null && switchingTo != null) {
+                if (error == null && label == GameStatus.PAUSED) {
+                    afterRelease()
+                } else {
+                    switchingTo = null
+                    if (error != null) toast("切换失败 · $error")
+                }
+            }
             if (observing) observeWindow()
         }
         if (current != null || wasStarting) {
@@ -245,6 +265,66 @@ object GameSession : InputManager.InputDeviceListener {
         arm(current, choice, edit = true)
     }
 
+    private fun showProfilePicker() {
+        val current = profile ?: return
+        if (releasing || switchingTo != null || state.value.status !in SWITCH_STATES) return
+        val viewport = gameRegion(current) ?: return
+        val profiles = repository.forGame(current.gamePackage)
+        overlay?.chooseProfile(current, profiles, viewport.safe, ::switchProfile)
+    }
+
+    private fun switchProfile(id: String) {
+        val current = profile ?: return
+        val status = state.value.status
+        if (id == current.id || releasing || switchingTo != null || status !in SWITCH_STATES) return
+        val next = runCatching {
+            repository.load(id).also { require(it.gamePackage == current.gamePackage) { "方案不适用于当前游戏" } }
+        }.getOrElse {
+            val message = it.message ?: "无法读取方案"
+            stop(message, GameStatus.PAUSED)
+            toast("无法切换方案 · $message")
+            return
+        }
+
+        if (status == GameStatus.PAUSED || status == GameStatus.ERROR) {
+            if (!saveSelectedProfile(next)) {
+                publish(GameStatus.PAUSED, "无法保存所选方案")
+                toast("切换失败 · 无法保存所选方案")
+                return
+            }
+            publish(GameStatus.PAUSED, "已切换至 · ${next.name}")
+            observeWindow()
+            toast("已切换至：${next.name}")
+            return
+        }
+
+        switchingTo = next
+        stopSession("正在切换方案", GameStatus.PAUSED) {
+            if (switchingTo !== next) return@stopSession
+            val viewport = gameRegion(next)
+            if (viewport == null) {
+                stop("游戏窗口已变化，请回到横屏游戏后重试", GameStatus.PAUSED)
+                return@stopSession
+            }
+            begin(next, viewport)
+        }
+    }
+
+    private fun saveSelectedProfile(selected: Profile): Boolean {
+        val previous = repository.selectedId
+        return runCatching { repository.selectedId = selected.id }.fold(
+            onSuccess = { profile = selected; true },
+            onFailure = {
+                if (repository.selectedId != previous) runCatching { repository.selectedId = previous }
+                false
+            },
+        )
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(app, message, Toast.LENGTH_SHORT).show()
+    }
+
     private fun startObserver() {
         if (!observing) {
             observing = true
@@ -258,7 +338,7 @@ object GameSession : InputManager.InputDeviceListener {
     }
 
     private fun observeWindow() {
-        val selected = profile ?: return
+        val selected = switchingTo ?: profile ?: return
         val status = state.value.status
         if (releasing) return
         val viewport = gameRegion(selected)
@@ -282,10 +362,12 @@ object GameSession : InputManager.InputDeviceListener {
         when (status) {
             GameStatus.WAITING -> if (editingRequested) showEditor(selected, viewport) else begin(selected, viewport)
             GameStatus.READY, GameStatus.ACTIVE -> overlay?.controls(
-                "暂停", selected, viewport.safe, ::pause, ::stopFromOverlay, mappingViewport = viewport.mapping,
+                "暂停", selected, viewport.safe, ::pause, ::stopFromOverlay, ::showProfilePicker,
+                mappingViewport = viewport.mapping,
             )
             GameStatus.PAUSED, GameStatus.ERROR -> overlay?.controls(
-                "继续", selected, viewport.safe, ::resume, ::stopFromOverlay, ::editFromOverlay, viewport.mapping,
+                "继续", selected, viewport.safe, ::resume, ::stopFromOverlay, ::showProfilePicker,
+                ::editFromOverlay, viewport.mapping,
             )
             else -> Unit
         }
@@ -332,6 +414,7 @@ object GameSession : InputManager.InputDeviceListener {
     }
 
     private fun begin(selected: Profile, viewport: GameRegion) {
+        val failureStatus = if (switchingTo === selected) GameStatus.PAUSED else GameStatus.ERROR
         val capture = service ?: return
         val attached = ControllerInput.currentController()
         if (attached == null) {
@@ -341,18 +424,18 @@ object GameSession : InputManager.InputDeviceListener {
         val targetUid = try {
             app.packageManager.getApplicationInfo(selected.gamePackage, 0).uid
         } catch (_: Exception) {
-            stop("无法核实游戏应用身份", GameStatus.ERROR)
+            stop("无法核实游戏应用身份", failureStatus)
             return
         }
         if (choice == BackendChoice.ACCESSIBILITY) shellBacked = false
         else if (ShellConnection.available()) shellBacked = true
         else {
-            stop("Shizuku 不可用", GameStatus.ERROR)
+            stop("Shizuku 不可用", failureStatus)
             return
         }
         val hybrid = repository.hybridTouch && shellBacked
         if (hybrid && !capture.canCaptureMainScreen()) {
-            stop("当前系统未识别可并用的主屏触摸设备，可在设置关闭并用", GameStatus.ERROR)
+            stop("当前系统未识别可并用的主屏触摸设备，可在设置关闭并用", failureStatus)
             return
         }
         val currentToken = ++token
@@ -365,7 +448,7 @@ object GameSession : InputManager.InputDeviceListener {
         deviceId = attached.id
         publish(GameStatus.STARTING, "正在准备触控会话", backendName, viewport.mapping)
         fun fail(message: String) {
-            if (currentToken == token) stop(message, GameStatus.ERROR)
+            if (currentToken == token) stop(message, failureStatus)
         }
         fun accepted() {
             if (currentToken == token && state.value.status == GameStatus.READY) {
@@ -378,17 +461,32 @@ object GameSession : InputManager.InputDeviceListener {
                 fail("启动时游戏窗口已变化")
                 return
             }
+            val prepared = runCatching {
+                val nextEngine = MappingEngine(selected, viewport.mapping, repository.calibration(attached))
+                capture.capture(true, screen = hybrid)
+                nextEngine
+            }.getOrElse {
+                fail(it.message ?: "无法初始化映射")
+                return
+            }
+            val switched = switchingTo === selected
+            if (switched && !saveSelectedProfile(selected)) {
+                fail("无法保存所选方案")
+                return
+            }
+            if (switched) switchingTo = null
             controller.reset()
-            engine = MappingEngine(selected, viewport.mapping, repository.calibration(attached))
+            engine = prepared
             backend = newBackend
             started = SystemClock.uptimeMillis()
             hadContacts = false
             lastTargetCheck = 0L
             screenContacts = if (hybrid) ScreenContacts() else null
-            capture.capture(true, screen = hybrid)
             Log.i(TAG, "session_ready profile=${selected.id} backend=$backendName viewport=${viewport.safe} " +
                 "mappingViewport=${viewport.mapping} device=${attached.id}")
             publish(GameStatus.READY, if (hybrid) "等待手柄或触屏动作" else "等待手柄动作", backendName, viewport.mapping)
+            observeWindow()
+            if (switched && currentToken == token) toast("已切换至：${selected.name}")
             tick(currentToken)
         }
         if (shellBacked) ShellConnection.backend(app, targetUid, ::ready, ::fail, ::accepted, selected.gamePackage)
@@ -411,7 +509,8 @@ object GameSession : InputManager.InputDeviceListener {
 
     private fun render(checkTarget: Boolean = false) {
         val now = SystemClock.uptimeMillis()
-        val controllerContacts = engine?.frame(controller.state, now) ?: return
+        val generated = engine?.frame(controller.state, now) ?: return
+        val controllerContacts = panelContacts.filter(generated) { overlay?.covers(it) == true }
         val contacts = screenContacts?.combine(controllerContacts) ?: controllerContacts
         if (contacts.isNotEmpty() && (checkTarget || !hadContacts || now - lastTargetCheck >= 48)) {
             val selected = profile ?: return
@@ -420,12 +519,6 @@ object GameSession : InputManager.InputDeviceListener {
                 return
             }
             lastTargetCheck = now
-        }
-        if (controllerContacts.isNotEmpty() && overlay?.covers(controllerContacts) == true) {
-            val message = "悬浮条遮住了映射触点，请拖到空白处"
-            stop(message, GameStatus.PAUSED)
-            android.widget.Toast.makeText(app, message, android.widget.Toast.LENGTH_SHORT).show()
-            return
         }
         hadContacts = contacts.isNotEmpty()
         backend?.frame(contacts)
@@ -484,4 +577,5 @@ object GameSession : InputManager.InputDeviceListener {
     }
 
     private val ACTIVE_STATES = setOf(GameStatus.STARTING, GameStatus.READY, GameStatus.ACTIVE)
+    private val SWITCH_STATES = setOf(GameStatus.READY, GameStatus.ACTIVE, GameStatus.PAUSED, GameStatus.ERROR)
 }

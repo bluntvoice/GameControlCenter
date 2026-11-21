@@ -70,6 +70,43 @@ class CoreTest {
         assertEquals(contact.anchor.y - 45f, contact.point.y, .01f)
     }
 
+    @Test fun panelSnapsEitherEdgeAndClampsItsDragPosition() {
+        val left = PanelPlacement.fromDrag(210, 330, 1600, 1000, 216)
+        val right = PanelPlacement.fromDrag(1590, 1010, 1600, 1000, 216)
+        val free = PanelPlacement.fromDrag(800, -20, 1600, 1000, 216)
+        assertEquals(PanelEdge.LEFT, left.edge)
+        assertEquals(PanelEdge.RIGHT, right.edge)
+        assertTrue(left.collapsed)
+        assertTrue(right.collapsed)
+        assertEquals(0 to 330, left.offset(1500, 1000))
+        assertEquals(1500 to 1000, right.offset(1500, 1000))
+        assertEquals(null, free.edge)
+        assertFalse(free.collapsed)
+        assertEquals(750 to 0, free.offset(1500, 1000))
+    }
+
+    @Test fun reopeningAndRefoldingPanelKeepsTheEdgeAndVerticalRatio() {
+        val legacy = PanelPlacement(Point(.82f, .4f))
+        assertEquals(820 to 200, legacy.offset(1000, 500))
+        val collapsed = legacy.fold()
+        val expanded = collapsed.copy(collapsed = false)
+        assertEquals(1200 to 180, collapsed.offset(1200, 450))
+        assertEquals(900 to 200, expanded.offset(900, 500))
+        assertEquals(collapsed, expanded.fold())
+    }
+
+    @Test fun panelDoesNotRestartACoveredHeldButtonOrInterruptOtherContacts() {
+        val guard = PanelContactGuard()
+        val skill = Contact("skill", Point(130f, 300f))
+        val stick = Contact("stick", Point(190f, 460f))
+        val contacts = listOf(skill, stick)
+        assertEquals(contacts, guard.filter(contacts) { false })
+        assertEquals(listOf(stick), guard.filter(contacts) { it == skill })
+        assertEquals(listOf(stick), guard.filter(contacts) { false })
+        assertEquals(listOf(stick), guard.filter(listOf(stick)) { false })
+        assertEquals(contacts, guard.filter(contacts) { false })
+    }
+
     @Test fun arenaMappingKeepsScreenPositionsWhenTheCutoutChangesSides() {
         val leftCutout = Viewport(144, 0, 2464, 1200)
         val rightCutout = Viewport(0, 0, 2464, 1200)

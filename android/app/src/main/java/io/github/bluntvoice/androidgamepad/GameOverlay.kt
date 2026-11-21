@@ -17,6 +17,7 @@ import android.view.WindowManager
 import android.widget.Button as NativeButton
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import kotlin.math.hypot
@@ -26,6 +27,8 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
     private val windows = context.getSystemService(WindowManager::class.java)
     private var panel: View? = null
     private var panelKey = ""
+    private var panelViewport: Viewport? = null
+    private var profilePicker: View? = null
 
     private var hints: HintCanvas? = null
     private var hintsKey: Triple<String, Int, Viewport>? = null
@@ -37,14 +40,37 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
         viewport: Viewport,
         toggle: () -> Unit,
         stop: () -> Unit,
+        chooseProfile: () -> Unit,
         edit: (() -> Unit)? = null,
         mappingViewport: Viewport = viewport,
     ) {
         showHints(profile, mappingViewport)
-        if (panelKey == label && panel != null) return
+        if (panelKey == label && panelViewport == viewport && panel != null) return
         clearPanel()
+        clearProfilePicker()
+        val placement = repository.panelPlacement
+
+        fun redrawControls() {
+            clearPanel()
+            controls(label, profile, viewport, toggle, stop, chooseProfile, edit, mappingViewport)
+        }
+
+        fun place(next: PanelPlacement) {
+            repository.savePanelPlacement(next)
+            redrawControls()
+        }
+
+        fun toggleHints() {
+            runCatching { repository.showHints = !repository.showHints }.onSuccess {
+                redrawControls()
+            }.onFailure {
+                Toast.makeText(context, "无法保存键位显示设置", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         val params = positioned(-2, -2, viewport).apply {
             flags = flags or WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
+            title = if (placement.collapsed) "安卓手柄控制台边缘拉手" else "安卓手柄控制台"
         }
         val grip = TextView(context).apply {
             text = "⠿"
@@ -55,23 +81,62 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
         }
-        val buttons = row().apply {
-            alpha = repository.panelOpacity
-            background = GradientDrawable().apply {
-                setColor(0xFF25303E.toInt())
-                cornerRadius = dp(16).toFloat()
+        val view = if (placement.collapsed) {
+            FrameLayout(context).apply {
+                alpha = repository.panelOpacity
+                addView(TextView(context).apply {
+                    text = if (placement.edge == PanelEdge.LEFT) "›" else "‹"
+                    textSize = 23f
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.WHITE)
+                    background = panelBackground()
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }, FrameLayout.LayoutParams(dp(32), dp(52), if (placement.edge == PanelEdge.LEFT) {
+                    Gravity.LEFT
+                } else Gravity.RIGHT))
+                minimumWidth = dp(48)
+                minimumHeight = dp(52)
+                contentDescription = "展开控制悬浮条"
+                isFocusable = true
+                setOnClickListener { place(placement.copy(collapsed = false)) }
             }
-            addView(grip)
-            addView(button(label, toggle, compact = true))
-            if (edit != null) addView(button("编辑", edit, compact = true))
-            addView(button("停止", stop, compact = true))
+        } else {
+            row().apply {
+                alpha = repository.panelOpacity
+                background = panelBackground()
+                addView(grip)
+                addView(button(label, toggle, compact = true))
+                addView(button("方案", chooseProfile, compact = true))
+                val hintsAction = if (repository.showHints) "隐藏键位" else "显示键位"
+                addView(button(hintsAction, ::toggleHints, compact = true))
+                if (edit != null) addView(button("编辑", edit, compact = true))
+                addView(button("停止", stop, compact = true))
+                addView(button("收起", { place(placement.fold()) }, compact = true))
+            }
         }
-        buttons.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-        val xTravel = (viewport.width - buttons.measuredWidth).coerceAtLeast(0)
-        val yTravel = (viewport.height - buttons.measuredHeight).coerceAtLeast(0)
-        val placement = repository.panelPlacement
-        params.x += (xTravel * placement.x).roundToInt()
-        params.y += (yTravel * placement.y).roundToInt()
+        view.measure(View.MeasureSpec.makeMeasureSpec(viewport.width, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(viewport.height, View.MeasureSpec.AT_MOST))
+        val xTravel = (viewport.width - view.measuredWidth).coerceAtLeast(0)
+        val yTravel = (viewport.height - view.measuredHeight).coerceAtLeast(0)
+        val (offsetX, offsetY) = placement.offset(xTravel, yTravel)
+        params.x += offsetX
+        params.y += offsetY
+        if (!placement.collapsed) {
+            installDrag(grip, view, params, viewport, xTravel, yTravel, ::place)
+        }
+        show(view, params, label)
+        if (panel === view) panelViewport = viewport
+    }
+
+    private fun installDrag(
+        grip: View,
+        view: View,
+        params: WindowManager.LayoutParams,
+        viewport: Viewport,
+        xTravel: Int,
+        yTravel: Int,
+        place: (PanelPlacement) -> Unit,
+    ) {
         var downX = 0f
         var downY = 0f
         var left = 0
@@ -81,6 +146,7 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
         grip.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    clearProfilePicker()
                     downX = event.rawX
                     downY = event.rawY
                     left = params.x
@@ -94,31 +160,111 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
                         moved = true
                         params.x = (left + dx.roundToInt()).coerceIn(viewport.left, viewport.left + xTravel)
                         params.y = (top + dy.roundToInt()).coerceIn(viewport.top, viewport.top + yTravel)
-                        runCatching { windows.updateViewLayout(buttons, params) }
+                        runCatching { windows.updateViewLayout(view, params) }
                     }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (moved) {
-                    repository.savePanelPlacement(Point((params.x - viewport.left).toFloat() / xTravel.coerceAtLeast(1),
-                        (params.y - viewport.top).toFloat() / yTravel.coerceAtLeast(1)))
+                MotionEvent.ACTION_UP -> if (moved) {
+                    place(PanelPlacement.fromDrag(params.x - viewport.left, params.y - viewport.top,
+                        xTravel, yTravel, dp(72)))
+                }
+                MotionEvent.ACTION_CANCEL -> if (moved) {
+                    params.x = left
+                    params.y = top
+                    runCatching { windows.updateViewLayout(view, params) }
                 }
             }
             true
         }
-        show(buttons, params, label)
+    }
+
+    fun chooseProfile(current: Profile, profiles: List<Profile>, viewport: Viewport, select: (String) -> Unit) {
+        if (profilePicker != null) {
+            clearProfilePicker()
+            return
+        }
+        val width = minOf(viewport.width, dp(360))
+        val height = minOf((viewport.height * .85f).roundToInt(), dp(116 + 52 * profiles.size), dp(346))
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = panelBackground()
+            setPadding(dp(12), dp(8), dp(12), dp(4))
+        }
+        val header = row().apply {
+            addView(TextView(context).apply {
+                text = "选择映射方案"
+                textSize = 17f
+                setTextColor(Color.WHITE)
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(button("关闭", ::clearProfilePicker, compact = true))
+        }
+        content.addView(header)
+        content.addView(TextView(context).apply {
+            text = "当前 · ${current.name}"
+            textSize = 13f
+            setTextColor(0xFFB8C9DE.toInt())
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(10), 0, dp(10), dp(6))
+        })
+        content.addView(ScrollView(context).apply {
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                for (profile in profiles) {
+                    val selected = profile.id == current.id
+                    addView(TextView(context).apply {
+                        text = if (selected) "✓  ${profile.name}" else profile.name
+                        setTextColor(Color.WHITE)
+                        minHeight = dp(48)
+                        setPadding(dp(12), dp(5), dp(12), dp(5))
+                        textSize = 14f
+                        gravity = Gravity.CENTER_VERTICAL
+                        maxLines = 2
+                        ellipsize = TextUtils.TruncateAt.END
+                        isFocusable = true
+                        if (selected) {
+                            stateDescription = "当前方案"
+                            background = GradientDrawable().apply {
+                                setColor(0xFF3A526F.toInt())
+                                cornerRadius = dp(10).toFloat()
+                            }
+                        }
+                        setOnClickListener {
+                            clearProfilePicker()
+                            select(profile.id)
+                        }
+                    }, LinearLayout.LayoutParams(-1, -2))
+                }
+            })
+        }, LinearLayout.LayoutParams(-1, 0, 1f))
+        val params = positioned(width, height, viewport).apply {
+            x += (viewport.width - width) / 2
+            y += (viewport.height - height) / 2
+            flags = flags or WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
+            title = "安卓手柄控制台方案选择"
+        }
+        runCatching { windows.addView(content, params) }.onSuccess { profilePicker = content }
+            .onFailure { Toast.makeText(context, "无法打开方案列表", Toast.LENGTH_SHORT).show() }
     }
 
     fun pressed(buttons: Set<Button>) {
         hints?.pressed(buttons)
     }
 
-    fun covers(contacts: List<Contact>): Boolean {
-        val current = panel ?: return false
-        if (!current.isLaidOut || panelKey == "editor") return false
-        current.getLocationOnScreen(panelLocation)
+    fun covers(contact: Contact): Boolean =
+        (panelKey != "editor" && covers(panel, contact)) || covers(profilePicker, contact)
+
+    private fun covers(view: View?, contact: Contact): Boolean {
+        if (view == null || !view.isLaidOut) return false
+        view.getLocationOnScreen(panelLocation)
         val (left, top) = panelLocation
-        fun inside(point: Point) = point.x >= left && point.x < left + current.width &&
-            point.y >= top && point.y < top + current.height
-        return contacts.any { inside(it.anchor) || inside(it.point) }
+        fun inside(point: Point) = point.x >= left && point.x < left + view.width &&
+            point.y >= top && point.y < top + view.height
+        return inside(contact.anchor) || inside(contact.point)
+    }
+
+    private fun panelBackground() = GradientDrawable().apply {
+        setColor(0xFF25303E.toInt())
+        cornerRadius = dp(16).toFloat()
     }
 
     private fun showHints(profile: Profile, viewport: Viewport) {
@@ -190,6 +336,7 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
     }
 
     fun clear() {
+        clearProfilePicker()
         clearPanel()
         clearHints()
     }
@@ -201,10 +348,17 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
         if (previous != null) runCatching { windows.removeViewImmediate(previous) }
     }
 
+    private fun clearProfilePicker() {
+        val previous = profilePicker
+        profilePicker = null
+        if (previous != null) runCatching { windows.removeViewImmediate(previous) }
+    }
+
     private fun clearPanel() {
         val previous = panel
         panel = null
         panelKey = ""
+        panelViewport = null
         if (previous != null) runCatching { windows.removeViewImmediate(previous) }
     }
 

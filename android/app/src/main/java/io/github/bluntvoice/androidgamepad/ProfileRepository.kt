@@ -35,6 +35,10 @@ class ProfileRepository(private val context: Context) {
         .filter { it.isFile && it.extension == "json" }.map { it.nameWithoutExtension }).distinct()
 
     fun all(): List<Profile> = ids().map(::load).sortedBy { if (it.id == ARENA_ID) 0 else 1 }
+    fun forGame(packageName: String): List<Profile> = ids().mapNotNull { id ->
+        runCatching { load(id) }.getOrNull()?.takeIf { it.gamePackage == packageName }
+    }.sortedBy { if (it.id == ARENA_ID) 0 else 1 }
+
     fun load(id: String) = Profile.parse(read(id))
     fun isBuiltin(id: String) = id in originals
     fun editable(id: String) = JSONObject(read(id))
@@ -74,18 +78,22 @@ class ProfileRepository(private val context: Context) {
 
     val hintOpacity get() = preferences.getFloat("hintOpacity", .72f)
     val panelOpacity get() = preferences.getFloat("panelOpacity", .88f)
-    val panelPlacement get() = Point(
-        preferences.getFloat("panelX", 1f).coerceIn(0f, 1f),
-        preferences.getFloat("panelY", .04f).coerceIn(0f, 1f),
-    )
+    internal val panelPlacement: PanelPlacement
+        get() {
+            val edge = PanelEdge.entries.firstOrNull { it.name == preferences.getString("panelEdge", null) }
+            val position = Point(preferences.getFloat("panelX", 1f).coerceIn(0f, 1f),
+                preferences.getFloat("panelY", .04f).coerceIn(0f, 1f))
+            return PanelPlacement(position, edge, edge != null && preferences.getBoolean("panelCollapsed", false))
+        }
 
     fun saveOverlayOpacity(hint: Float, panel: Float) {
         require(hint in .15f..1f && panel in .35f..1f)
         check(preferences.edit().putFloat("hintOpacity", hint).putFloat("panelOpacity", panel).commit())
     }
 
-    fun savePanelPlacement(point: Point) {
-        preferences.edit().putFloat("panelX", point.x).putFloat("panelY", point.y).apply()
+    internal fun savePanelPlacement(placement: PanelPlacement) {
+        preferences.edit().putFloat("panelX", placement.position.x).putFloat("panelY", placement.position.y)
+            .putString("panelEdge", placement.edge?.name).putBoolean("panelCollapsed", placement.collapsed).apply()
     }
 
     fun restore(id: String): Profile = persist(requireNotNull(originals[id]) { "此方案没有内置原始版本" })

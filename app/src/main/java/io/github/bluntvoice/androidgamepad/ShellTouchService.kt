@@ -1,5 +1,6 @@
 package io.github.bluntvoice.androidgamepad
 
+import android.content.ComponentName
 import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
@@ -14,7 +15,7 @@ import kotlin.system.exitProcess
 
 /**
  * Shizuku owns this process. Only the owning app UID can supply test frames,
- * and all injected events target that UID through the input manager.
+ * and game sessions require the verified game task on the main display.
  */
 class ShellTouchService : ITouchService.Stub() {
     private val stream = PointerStream()
@@ -22,7 +23,9 @@ class ShellTouchService : ITouchService.Stub() {
     private var owner: IBinder? = null
     private val death = IBinder.DeathRecipient { synchronized(this) { reset() } }
     private val watchdog = Runnable { synchronized(this) { reset() } }
+    private var ownerUid = -1
     private var targetUid = -1
+    private var foregroundPackage = ""
     private var downTime = 0L
     private val manager by lazy {
         Class.forName("android.hardware.input.InputManagerGlobal").getMethod("getInstance").invoke(null)
@@ -33,22 +36,42 @@ class ShellTouchService : ITouchService.Stub() {
             Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
     }
 
+    private val generalInjector by lazy {
+        manager.javaClass.getMethod("injectInputEvent", InputEvent::class.java, Int::class.javaPrimitiveType)
+    }
+    private val taskManager by lazy {
+        Class.forName("android.app.ActivityTaskManager").getMethod("getService").invoke(null)
+            ?: error("ActivityTaskManager unavailable")
+    }
+    private val focusedTask by lazy {
+        Class.forName("android.app.IActivityTaskManager").getMethod("getFocusedRootTaskInfo")
+    }
+
     @Synchronized
-    override fun open(owner: IBinder): String? = checked {
+    override fun open(owner: IBinder, targetUid: Int, foregroundPackage: String): String? = checked {
         check(Process.myUid() == 2000) { "原型仅支持 Shizuku shell 模式" }
-        check(this.owner == null || Binder.getCallingUid() == targetUid) { "触控会话已由其他客户端占用" }
+        check(this.owner == null || Binder.getCallingUid() == ownerUid) { "触控会话已由其他客户端占用" }
         val uid = Binder.getCallingUid()
-        check(uid >= 10_000)
-        injector
+        check(uid >= 10_000 && targetUid >= 10_000)
+        check((foregroundPackage.isEmpty() && uid == targetUid) ||
+            (foregroundPackage == ProfileRepository.GAME_PACKAGE && uid != targetUid)) { "不支持的触控目标" }
+        if (foregroundPackage.isEmpty()) {
+            injector
+        } else {
+            generalInjector
+            check(isForeground(foregroundPackage)) { "Shizuku 未核实目标游戏在主显示屏前台" }
+        }
         check(reset()) { "上一次触控取消失败" }
         owner.linkToDeath(death, 0)
         this.owner = owner
-        targetUid = uid
+        ownerUid = uid
+        this.targetUid = targetUid
+        this.foregroundPackage = foregroundPackage
     }
 
     @Synchronized
     override fun frame(ids: Array<String>, coordinates: FloatArray): String? = checked {
-        check(Binder.getCallingUid() == targetUid && owner != null) { "无有效的触控会话" }
+        check(Binder.getCallingUid() == ownerUid && owner != null) { "无有效的触控会话" }
         check(ids.size <= PointerStream.LIMIT && coordinates.size == ids.size * 4)
         check(coordinates.all { it.isFinite() && it in 0f..16384f })
         val contacts = ids.mapIndexed { index, id ->
@@ -56,6 +79,9 @@ class ShellTouchService : ITouchService.Stub() {
             Contact(id, Point(coordinates[i], coordinates[i + 1]), Point(coordinates[i + 2], coordinates[i + 3]))
         }
         try {
+            if (contacts.isNotEmpty() && foregroundPackage.isNotEmpty()) {
+                check(isForeground(foregroundPackage)) { "目标游戏已经离开前台" }
+            }
             check(stream.render(contacts, ::inject)) { "系统拒绝触控事件" }
         } catch (failure: Exception) {
             reset()
@@ -67,13 +93,13 @@ class ShellTouchService : ITouchService.Stub() {
 
     @Synchronized
     override fun close(): String? = checked {
-        check(targetUid < 0 || Binder.getCallingUid() == targetUid)
+        check(targetUid < 0 || Binder.getCallingUid() == ownerUid)
         check(reset()) { "系统未确认触点已取消" }
     }
 
     @Synchronized
     override fun destroy() {
-        if (Binder.getCallingUid() != targetUid && Binder.getCallingUid() != Process.myUid()) return
+        if (Binder.getCallingUid() != ownerUid && Binder.getCallingUid() != Process.myUid()) return
         reset()
         exitProcess(0)
     }
@@ -84,7 +110,9 @@ class ShellTouchService : ITouchService.Stub() {
         stream.reset()
         owner?.let { runCatching { it.unlinkToDeath(death, 0) } }
         owner = null
+        ownerUid = -1
         targetUid = -1
+        foregroundPackage = ""
         downTime = 0
         return cancelled
     }
@@ -109,16 +137,26 @@ class ShellTouchService : ITouchService.Stub() {
         val motion = MotionEvent.obtain(downTime, now, base or (event.index shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
             properties.size, properties, positions, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
         return try {
-            val identity = Binder.clearCallingIdentity()
-            try {
-                // WAIT_FOR_RESULT reports whether Android accepted routing to our test UID.
-                injector.invoke(manager, motion, 1, targetUid) as Boolean
-            } finally {
-                Binder.restoreCallingIdentity(identity)
+            asShell {
+                // HyperOS gesture monitors receive the same pointer stream as the game.
+                // The app verifies the game window and this service verifies its foreground task.
+                if (foregroundPackage.isEmpty()) injector.invoke(manager, motion, 1, targetUid) as Boolean
+                else generalInjector.invoke(manager, motion, 1) as Boolean
             }
         } finally {
             motion.recycle()
         }
+    }
+
+    private fun isForeground(packageName: String): Boolean = asShell {
+        val task = focusedTask.invoke(taskManager) ?: return@asShell false
+        val component = task.javaClass.getField("topActivity").get(task) as? ComponentName
+        task.javaClass.getField("displayId").getInt(task) == 0 && component?.packageName == packageName
+    }
+
+    private inline fun <T> asShell(block: () -> T): T {
+        val identity = Binder.clearCallingIdentity()
+        return try { block() } finally { Binder.restoreCallingIdentity(identity) }
     }
 
     private inline fun checked(block: () -> Unit): String? = try {

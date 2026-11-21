@@ -1,5 +1,7 @@
 package io.github.bluntvoice.androidgamepad
 
+import kotlin.math.hypot
+
 data class ControllerState(
     val left: Point = Point.Zero,
     val right: Point = Point.Zero,
@@ -44,7 +46,9 @@ class MappingEngine(
         down.forEach { started[it] = now }
         (previous - buttons).forEach(started::remove)
         previous = buttons
-        val left = recenter(input.left, calibration.leftCenter).radial(parameters.leftDeadzone)
+        val leftAxis = recenter(input.left, calibration.leftCenter).radial(parameters.leftDeadzone)
+        val gain = minOf(parameters.leftSensitivity, 1f / hypot(leftAxis.x, leftAxis.y))
+        val left = Point(leftAxis.x * gain, leftAxis.y * gain)
         val rawRight = recenter(input.right, calibration.rightCenter)
         val right = Point(
             rawRight.x * if (calibration.invertRightX) -1 else 1,

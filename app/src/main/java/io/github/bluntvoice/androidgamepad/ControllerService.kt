@@ -2,6 +2,7 @@ package io.github.bluntvoice.androidgamepad
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.Intent
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -12,7 +13,9 @@ class ControllerService : AccessibilityService() {
     private var capturing = false
 
     override fun onServiceConnected() {
+        ProbeRuntime.initialize(this)
         ProbeRuntime.service = this
+        GameSession.serviceConnected(this)
         capture(false)
     }
 
@@ -32,16 +35,18 @@ class ControllerService : AccessibilityService() {
     override fun onKeyEvent(event: KeyEvent): Boolean {
         val id = event.deviceId to event.keyCode
         val wasConsumed = id in consumed
-        val canCapture = capturing && ProbeRuntime.accepts(event.deviceId)
-        if (canCapture) ProbeRuntime.key(event, "AccessibilityService")
+        val game = capturing && GameSession.accepts(event.deviceId)
+        val probe = capturing && ProbeRuntime.accepts(event.deviceId)
+        if (game) GameSession.key(event)
+        else if (probe) ProbeRuntime.key(event, "AccessibilityService")
         if (event.action == KeyEvent.ACTION_UP && wasConsumed) {
             consumed.remove(id)
             if (!capturing) capture(false)
             return true
         }
-        if (event.action == KeyEvent.ACTION_DOWN && canCapture &&
+        if (event.action == KeyEvent.ACTION_DOWN && (game || probe) &&
             event.keyCode in ControllerInput.BUTTONS && (event.repeatCount == 0 || wasConsumed) &&
-            ProbeRuntime.isSessionPress(event)) {
+            (if (game) GameSession.isSessionPress(event) else ProbeRuntime.isSessionPress(event))) {
             consumed.add(id)
             return true
         }
@@ -49,14 +54,21 @@ class ControllerService : AccessibilityService() {
     }
 
     override fun onMotionEvent(event: MotionEvent) {
-        if (capturing && ProbeRuntime.accepts(event.deviceId)) ProbeRuntime.motion(event, "AccessibilityService")
+        if (!capturing || !event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return
+        if (GameSession.accepts(event.deviceId)) GameSession.motion(event)
+        else if (ProbeRuntime.accepts(event.deviceId)) ProbeRuntime.motion(event, "AccessibilityService")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent) = GameSession.windowChanged()
 
-    override fun onInterrupt() = ProbeRuntime.stop("无障碍服务中断")
+    override fun onInterrupt() {
+        if (ProbeRuntime.hasSession) ProbeRuntime.stop("无障碍服务中断")
+        if (GameSession.state.value.status != GameStatus.STOPPED) {
+            GameSession.stop("无障碍服务中断", GameStatus.ERROR)
+        }
+    }
 
-    override fun onUnbind(intent: android.content.Intent?): Boolean {
+    override fun onUnbind(intent: Intent?): Boolean {
         disconnect()
         return super.onUnbind(intent)
     }
@@ -68,8 +80,9 @@ class ControllerService : AccessibilityService() {
 
     private fun disconnect() {
         if (ProbeRuntime.service === this) {
-            ProbeRuntime.stop("无障碍服务已断开")
+            if (ProbeRuntime.hasSession) ProbeRuntime.stop("无障碍服务已断开")
             ProbeRuntime.service = null
         }
+        GameSession.serviceDisconnected(this)
     }
 }

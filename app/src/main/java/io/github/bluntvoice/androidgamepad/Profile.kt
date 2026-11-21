@@ -51,6 +51,7 @@ data class Parameters(
     val rightCurve: Float = 1.5f,
     val cameraSpeed: Float = 800f,
     val tapMs: Long = 50,
+    val leftSensitivity: Float = 1f,
 )
 
 data class Calibration(
@@ -90,6 +91,7 @@ data class Profile(
                 parameters.bounded("rightCurve", .5f, 3f),
                 parameters.bounded("cameraPxPerSecondAt1200", 50f, 4000f),
                 parameters.getLong("tapMs").also { require(it in 24..150) },
+                if (parameters.has("leftSensitivity")) parameters.bounded("leftSensitivity", .5f, 2f) else 1f,
             )
             val data = json.getJSONArray("mappings")
             require(data.length() in 1..18)
@@ -126,6 +128,20 @@ data class Profile(
             require(packageName.matches(Regex("[A-Za-z_]\\w*(\\.[A-Za-z_]\\w*)+")))
             return Profile(id, revision, name, packageName, tuning, mappings,
                 json.optJSONArray("unconverted")?.length() ?: 0)
+        }
+
+        fun duplicateDocument(source: String, newId: String, title: String): String {
+            val original = parse(source)
+            val name = title.trim()
+            require(newId != original.id && name.length in 1..80) { "请输入 1～80 字符的副本名称" }
+            val copied = JSONObject(source)
+                .put("profileId", newId)
+                .put("revision", 1)
+                .put("name", name)
+                .put("copiedFrom", JSONObject().put("profileId", original.id).put("revision", original.revision))
+                .toString(2)
+            parse(copied)
+            return copied
         }
 
         private fun JSONObject.bounded(name: String, min: Float, max: Float): Float {

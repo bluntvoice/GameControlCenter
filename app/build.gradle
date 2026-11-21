@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application' version '8.13.2'
     id 'org.jetbrains.kotlin.android' version '2.2.21'
+    id 'org.jetbrains.kotlin.plugin.compose' version '2.2.21'
 }
 android {
     namespace 'io.github.bluntvoice.androidgamepad'
@@ -10,12 +11,14 @@ android {
         applicationId 'io.github.bluntvoice.androidgamepad'
         minSdk 34
         targetSdk 34
-        versionCode 2
-        versionName '0.0.2-probe'
+        versionCode 7
+        versionName '0.0.7-playtest'
     }
 
     buildFeatures {
         aidl true
+        compose true
+        buildConfig true
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -26,6 +29,11 @@ kotlin {
     jvmToolchain(17)
 }
 dependencies {
+    implementation platform('androidx.compose:compose-bom:2025.06.00')
+    implementation 'androidx.activity:activity-compose:1.10.1'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-core'
+    implementation 'androidx.compose.foundation:foundation'
     implementation 'dev.rikka.shizuku:api:13.1.5'
     implementation 'dev.rikka.shizuku:provider:13.1.5'
     testImplementation 'junit:junit:4.13.2'

@@ -13,6 +13,7 @@ import android.os.IBinder
 import android.os.Looper
 import rikka.shizuku.Shizuku
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 
 interface TouchBackend {
     fun frame(contacts: List<Contact>)
@@ -22,6 +23,7 @@ interface TouchBackend {
 class AccessibilityTouchBackend(
     private val service: AccessibilityService,
     private val onFailure: (String) -> Unit,
+    private val onAccepted: () -> Unit = {},
 ) : TouchBackend {
     private data class Stroke(val path: GestureDescription.StrokeDescription, val end: Point)
 
@@ -31,6 +33,7 @@ class AccessibilityTouchBackend(
     private var busy = false
     private var stopping: ((String?) -> Unit)? = null
     private var closed = false
+    private var failure: String? = null
 
     override fun frame(contacts: List<Contact>) {
         if (closed || stopping != null) return
@@ -46,7 +49,7 @@ class AccessibilityTouchBackend(
 
     override fun stop(done: (String?) -> Unit) {
         if (closed) {
-            done(null)
+            done(failure)
             return
         }
         queue.clear()
@@ -57,9 +60,13 @@ class AccessibilityTouchBackend(
 
     private fun dispatchNext() {
         if (busy || closed || queue.isEmpty()) return
-        val contacts = queue.removeFirst()
+        val contacts = queue.removeFirst().map { it.copy(point = pixel(it.point), anchor = pixel(it.anchor)) }
         if (contacts.isEmpty() && active.isEmpty()) {
             finishStop(null)
+            return
+        }
+        if (contacts.size == active.size && contacts.all { active[it.id]?.end == it.point }) {
+            dispatchNext()
             return
         }
         val desired = contacts.associateBy(Contact::id)
@@ -106,12 +113,14 @@ class AccessibilityTouchBackend(
         busy = false
         if (error != null) {
             closed = true
+            failure = "$error，未确认全部触点释放"
             active.clear()
             queue.clear()
-            if (stopping != null) finishStop(error) else onFailure(error)
+            if (stopping != null) finishStop(failure) else onFailure(requireNotNull(failure))
             return
         }
         active = requireNotNull(next)
+        if (active.isNotEmpty()) onAccepted()
         if (active.isEmpty() && stopping != null) finishStop(null) else dispatchNext()
     }
 
@@ -121,6 +130,8 @@ class AccessibilityTouchBackend(
         stopping = null
         callback(error)
     }
+
+    private fun pixel(point: Point) = Point(point.x.roundToInt().toFloat(), point.y.roundToInt().toFloat())
 
     private fun line(from: Point, to: Point) = Path().apply {
         moveTo(from.x, from.y)
@@ -146,26 +157,32 @@ object ShellConnection {
 
     fun backend(
         context: Context,
+        targetUid: Int = context.applicationInfo.uid,
         ready: (TouchBackend) -> Unit,
         fail: (String) -> Unit,
+        accepted: () -> Unit = {},
+        foregroundPackage: String = "",
     ) {
         if (!available()) {
             fail("Shizuku 未启动或未授权")
             return
         }
-        check(target == null)
+        if (target != null) {
+            fail("另一个触控会话正在使用 Shizuku")
+            return
+        }
         val token = ++attempt
         val serviceArgs = Shizuku.UserServiceArgs(ComponentName(context, ShellTouchService::class.java))
-            .daemon(false).processNameSuffix("gamepad_touch").version(1)
+            .daemon(false).processNameSuffix("gamepad_touch").version(3)
         args = serviceArgs
         status = "正在连接 Shizuku UserService"
-        val candidate = ShizukuTouchBackend(worker, handler, owner, fail)
+        val candidate = ShizukuTouchBackend(worker, handler, owner, fail, accepted)
         target = candidate
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
                 if (token != attempt) return
                 val service = ITouchService.Stub.asInterface(binder)
-                candidate.open(service) { error ->
+                candidate.open(service, targetUid, foregroundPackage) { error ->
                     if (token != attempt) return@open
                     if (error == null) {
                         status = "Shizuku shell 注入会话已建立"
@@ -221,6 +238,7 @@ private class ShizukuTouchBackend(
     private val handler: Handler,
     private val owner: IBinder,
     private val onFailure: (String) -> Unit,
+    private val onAccepted: () -> Unit = {},
 ) : TouchBackend {
     private val queue = ArrayDeque<List<Contact>>()
     private var service: ITouchService? = null
@@ -230,10 +248,10 @@ private class ShizukuTouchBackend(
     var isReady = false
         private set
 
-    fun open(remote: ITouchService, done: (String?) -> Unit) {
+    fun open(remote: ITouchService, targetUid: Int, foregroundPackage: String, done: (String?) -> Unit) {
         service = remote
         worker.execute {
-            val error = call { remote.open(owner) }
+            val error = call { remote.open(owner, targetUid, foregroundPackage) }
             handler.post {
                 isReady = error == null && !closing
                 done(error)
@@ -270,7 +288,12 @@ private class ShizukuTouchBackend(
             val error = call { remote.frame(ids, coordinates) }
             handler.post {
                 busy = false
-                if (error != null && !closing) connectionLost(error) else drain()
+                if (error != null && !closing) {
+                    connectionLost(error)
+                } else {
+                    if (!closing && contacts.isNotEmpty()) onAccepted()
+                    drain()
+                }
             }
         }
     }

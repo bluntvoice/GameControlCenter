@@ -97,7 +97,7 @@ object ProbeRuntime : InputManager.InputDeviceListener {
             tick(attempt, durationMs)
         }
         val failed: (String) -> Unit = { message -> if (attempt == token) stop("控制异常 · $message") }
-        if (usingShizuku) ShellConnection.backend(context, ::accept, failed)
+        if (usingShizuku) ShellConnection.backend(context, ready = ::accept, fail = failed)
         else accept(AccessibilityTouchBackend(requireNotNull(service), failed))
     }
 

@@ -30,6 +30,27 @@ class CoreTest {
         assertFalse((arena.mappings + vanguard.mappings).any { it.action == Action.AIM })
     }
 
+    @Test fun duplicatedProfileUsesIndependentIdAndPreservesUnmappedNodes() {
+        val source = File("src/main/assets/profiles/a597648e0bd94b15822daddff501a9fb.json")
+            .readText(Charsets.UTF_8)
+        val original = Profile.parse(source)
+        val json = Profile.duplicateDocument(source, "local-vanguard", "激战先锋（手机）")
+        val duplicate = Profile.parse(json)
+        val raw = org.json.JSONObject(json)
+        assertEquals("local-vanguard", duplicate.id)
+        assertEquals(1, duplicate.revision)
+        assertEquals("激战先锋（手机）", duplicate.name)
+        assertEquals(original.mappings, duplicate.mappings)
+        assertEquals(original.id, raw.getJSONObject("copiedFrom").getString("profileId"))
+        assertEquals(23, raw.getJSONObject("copiedFrom").getInt("revision"))
+        assertEquals("RightButton", raw.getJSONArray("unconverted").getJSONObject(0)
+            .getJSONObject("node").getString("key"))
+        raw.getJSONArray("mappings").getJSONObject(0).getJSONObject("point").put("x", 0.2)
+        assertEquals(original, Profile.parse(source))
+        assertFalse(original.mappings == Profile.parse(raw.toString()).mappings)
+        assertTrue(runCatching { Profile.duplicateDocument(source, original.id, "副本") }.isFailure)
+    }
+
     @Test fun profileRejectsUnknownActionsAndUnsafeRepeatRates() {
         val original = File("src/main/assets/profiles/arena-3skills.json").readText(Charsets.UTF_8)
         for (invalid in listOf(original.replace("\"repeat\"", "\"script\""),
@@ -47,6 +68,17 @@ class CoreTest {
         assertTrue(engine.frame(ControllerState(left = Point(.15f, -.16f)), 0).isEmpty())
         val contact = engine.frame(ControllerState(left = Point(.15f, -1f)), 16).single()
         assertEquals(contact.anchor.y - 45f, contact.point.y, .01f)
+    }
+
+    @Test fun leftStickGainScalesTheResponseWithoutExceedingItsRange() {
+        val profile = Profile("gain", 1, "Gain", "test.game",
+            Parameters(leftDeadzone = 0f, leftSensitivity = 2f), listOf(stick))
+        val engine = MappingEngine(profile, area)
+        val state = ControllerState(left = Point(.3f, 0f))
+        val light = engine.frame(state, 0).single()
+        assertEquals(27f, light.point.x - light.anchor.x, .01f)
+        val full = engine.frame(ControllerState(left = Point(.9f, 0f)), 16).single()
+        assertEquals(45f, full.point.x - full.anchor.x, .01f)
     }
 
     @Test fun shouldersDoNotRestartEitherStickStream() {

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">安卓手柄控制台</string>
+    <string name="service_name">安卓手柄控制台 · 手柄输入</string>
+    <string name="service_description">仅在测试画布启用控制时读取手柄并派发模拟触控。退出画布或暂停后交还摇杆输入。</string>
 </resources>

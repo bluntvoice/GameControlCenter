@@ -55,6 +55,7 @@ object GameSession : InputManager.InputDeviceListener {
     private var engine: MappingEngine? = null
     private var backend: TouchBackend? = null
     private var shellBacked = false
+    private var screenContacts: ScreenContacts? = null
     private var releasing = false
     private var stopAfterRelease = false
     private var observing = false
@@ -148,6 +149,25 @@ object GameSession : InputManager.InputDeviceListener {
         return true
     }
 
+    fun screenMotion(event: MotionEvent) {
+        val fingers = screenContacts ?: return
+        val action = when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> TouchAction.DOWN
+            MotionEvent.ACTION_POINTER_DOWN -> TouchAction.POINTER_DOWN
+            MotionEvent.ACTION_MOVE -> TouchAction.MOVE
+            MotionEvent.ACTION_POINTER_UP -> TouchAction.POINTER_UP
+            MotionEvent.ACTION_UP -> TouchAction.UP
+            MotionEvent.ACTION_CANCEL -> TouchAction.CANCEL
+            else -> return
+        }
+        val points = List(event.pointerCount) { index ->
+            Pointer(event.getPointerId(index), Point(event.getRawX(index), event.getRawY(index)))
+        }
+        if (fingers.update(event.deviceId, event.downTime, action, event.actionIndex, points)) {
+            render(checkTarget = action == TouchAction.DOWN)
+        }
+    }
+
     private fun acceptInput(id: Int) {
         val now = SystemClock.uptimeMillis()
         mutableInput.value = InputSnapshot(controller.state, "AccessibilityService", id, now)
@@ -179,6 +199,7 @@ object GameSession : InputManager.InputDeviceListener {
         ++token
         if (current != null || wasStarting) service?.capture(false)
         backend = null
+        screenContacts = null
         engine = null
         region = null
         deviceId = null
@@ -323,8 +344,17 @@ object GameSession : InputManager.InputDeviceListener {
             stop("Shizuku 不可用", GameStatus.ERROR)
             return
         }
+        val hybrid = repository.hybridTouch && shellBacked
+        if (hybrid && !capture.canCaptureMainScreen()) {
+            stop("当前系统未识别可并用的主屏触摸设备，可在设置关闭并用", GameStatus.ERROR)
+            return
+        }
         val currentToken = ++token
-        val backendName = if (shellBacked) "Shizuku" else "无障碍 · 兼容性测试"
+        val backendName = when {
+            hybrid -> "Shizuku · 手柄与触屏并用"
+            shellBacked -> "Shizuku"
+            else -> "无障碍 · 兼容性测试"
+        }
         region = viewport
         deviceId = attached.id
         publish(GameStatus.STARTING, "正在准备触控会话", backendName, viewport)
@@ -348,9 +378,10 @@ object GameSession : InputManager.InputDeviceListener {
             started = SystemClock.uptimeMillis()
             hadContacts = false
             lastTargetCheck = 0L
-            capture.capture(true)
+            screenContacts = if (hybrid) ScreenContacts() else null
+            capture.capture(true, screen = hybrid)
             Log.i(TAG, "session_ready profile=${selected.id} backend=$backendName viewport=$viewport device=${attached.id}")
-            publish(GameStatus.READY, "等待手柄动作", backendName, viewport)
+            publish(GameStatus.READY, if (hybrid) "等待手柄或触屏动作" else "等待手柄动作", backendName, viewport)
             tick(currentToken)
         }
         if (shellBacked) ShellConnection.backend(app, targetUid, ::ready, ::fail, ::accepted, selected.gamePackage)
@@ -371,10 +402,11 @@ object GameSession : InputManager.InputDeviceListener {
         main.postDelayed({ tick(currentToken) }, 16L)
     }
 
-    private fun render() {
+    private fun render(checkTarget: Boolean = false) {
         val now = SystemClock.uptimeMillis()
-        val contacts = engine?.frame(controller.state, now) ?: return
-        if (contacts.isNotEmpty() && (!hadContacts || now - lastTargetCheck >= 48)) {
+        val controllerContacts = engine?.frame(controller.state, now) ?: return
+        val contacts = screenContacts?.combine(controllerContacts) ?: controllerContacts
+        if (contacts.isNotEmpty() && (checkTarget || !hadContacts || now - lastTargetCheck >= 48)) {
             val target = profile?.gamePackage ?: return
             if (gameViewport(target) != region) {
                 stop("触控前检查发现游戏已失焦或区域变化", GameStatus.PAUSED)
@@ -382,7 +414,7 @@ object GameSession : InputManager.InputDeviceListener {
             }
             lastTargetCheck = now
         }
-        if (contacts.isNotEmpty() && overlay?.covers(contacts) == true) {
+        if (controllerContacts.isNotEmpty() && overlay?.covers(controllerContacts) == true) {
             val message = "悬浮条遮住了映射触点，请拖到空白处"
             stop(message, GameStatus.PAUSED)
             android.widget.Toast.makeText(app, message, android.widget.Toast.LENGTH_SHORT).show()
@@ -422,6 +454,7 @@ object GameSession : InputManager.InputDeviceListener {
 
     override fun onInputDeviceRemoved(deviceId: Int) {
         if (deviceId == this.deviceId) stop("手柄已断开，重连后可继续", GameStatus.PAUSED)
+        else if (screenContacts?.usesDevice(deviceId) == true) stop("触摸设备已断开", GameStatus.PAUSED)
     }
 
     override fun onInputDeviceChanged(deviceId: Int) {

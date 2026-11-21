@@ -42,7 +42,9 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
         showHints(profile, viewport)
         if (panelKey == label && panel != null) return
         clearPanel()
-        val params = positioned(-2, -2, viewport)
+        val params = positioned(-2, -2, viewport).apply {
+            flags = flags or WindowManager.LayoutParams.FLAG_SPLIT_TOUCH
+        }
         val grip = TextView(context).apply {
             text = "⠿"
             contentDescription = "拖动控制悬浮条"

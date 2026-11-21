@@ -3,14 +3,19 @@ package io.github.bluntvoice.androidgamepad
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
+import android.hardware.input.InputManager
+import android.os.Build
+import android.view.Display
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 
 class ControllerService : AccessibilityService() {
     private val consumed = mutableSetOf<Pair<Int, Int>>()
     private var capturing = false
+    private var capturingScreen = false
 
     override fun onServiceConnected() {
         ProbeRuntime.initialize(this)
@@ -19,17 +24,20 @@ class ControllerService : AccessibilityService() {
         capture(false)
     }
 
-    fun capture(enabled: Boolean) {
+    fun capture(enabled: Boolean, screen: Boolean = false) {
         capturing = enabled
+        capturingScreen = enabled && screen
         val info = serviceInfo ?: return
-        info.setMotionEventSources(if (enabled) InputDevice.SOURCE_JOYSTICK else 0)
+        val joystickSource = if (enabled) InputDevice.SOURCE_JOYSTICK else 0
+        val screenSource = if (capturingScreen) InputDevice.SOURCE_TOUCHSCREEN else 0
+        info.setMotionEventSources(joystickSource or screenSource)
         val flag = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
         info.flags = if (enabled || consumed.isNotEmpty()) info.flags or flag else info.flags and flag.inv()
         serviceInfo = info
     }
 
     fun forgetDevice(deviceId: Int) {
-        if (consumed.removeAll { it.first == deviceId }) capture(capturing)
+        if (consumed.removeAll { it.first == deviceId }) capture(capturing, capturingScreen)
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
@@ -54,7 +62,18 @@ class ControllerService : AccessibilityService() {
     }
 
     override fun onMotionEvent(event: MotionEvent) {
-        if (!capturing || !event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return
+        if (!capturing) return
+        if (capturingScreen && event.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) {
+            if (event.deviceId <= 0) return
+            val device = event.device
+            if (device != null && !device.isVirtual && usesMainDisplay(device)) {
+                GameSession.screenMotion(event)
+            } else {
+                GameSession.stop("触摸设备已变化，已恢复系统触控", GameStatus.PAUSED)
+            }
+            return
+        }
+        if (!event.isFromSource(InputDevice.SOURCE_JOYSTICK)) return
         if (GameSession.accepts(event.deviceId)) GameSession.motion(event)
         else if (ProbeRuntime.accepts(event.deviceId)) ProbeRuntime.motion(event, "AccessibilityService")
     }
@@ -76,6 +95,26 @@ class ControllerService : AccessibilityService() {
     override fun onDestroy() {
         disconnect()
         super.onDestroy()
+    }
+
+    companion object {
+        // Public since API 37. Keep compiling the rest of the app against API 35.
+        private val associatedDisplayId by lazy {
+            runCatching { InputDevice::class.java.getMethod("getAssociatedDisplayId") }.getOrNull()
+        }
+
+        private fun usesMainDisplay(device: InputDevice): Boolean =
+            runCatching { associatedDisplayId?.invoke(device) == Display.DEFAULT_DISPLAY }.getOrDefault(false)
+    }
+
+    fun canCaptureMainScreen(): Boolean {
+        if (Build.VERSION.SDK_INT < 37 ||
+            getSystemService(AccessibilityManager::class.java).isTouchExplorationEnabled) return false
+        val input = getSystemService(InputManager::class.java)
+        return input.inputDeviceIds.any { id ->
+            val device = input.getInputDevice(id) ?: return@any false
+            !device.isVirtual && device.supportsSource(InputDevice.SOURCE_TOUCHSCREEN) && usesMainDisplay(device)
+        }
     }
 
     private fun disconnect() {

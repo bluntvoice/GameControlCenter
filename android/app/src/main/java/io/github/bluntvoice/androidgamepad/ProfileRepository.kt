@@ -53,6 +53,10 @@ class ProfileRepository(private val context: Context) {
         return persist(Profile.duplicateDocument(read(id), newId, name))
     }
 
+    var hybridTouch: Boolean
+        get() = preferences.getBoolean("hybridTouch", false)
+        set(value) { check(preferences.edit().putBoolean("hybridTouch", value).commit()) }
+
     var showHints: Boolean
         get() = preferences.getBoolean("showHints", true)
         set(value) { check(preferences.edit().putBoolean("showHints", value).commit()) }

@@ -81,6 +81,40 @@ class CoreTest {
         assertEquals(45f, full.point.x - full.anchor.x, .01f)
     }
 
+    @Test fun physicalTouchAndGamepadShareOneStreamInEitherOrder() {
+        val stick = Contact("left", Point(180f, 500f))
+        val finger = Pointer(7, Point(850f, 260f))
+        for (fingerFirst in listOf(false, true)) {
+            val stream = PointerStream()
+            val screen = ScreenContacts()
+            val events = mutableListOf<TouchEvent>()
+            val controller = listOf(stick)
+            fun render(inputs: List<Contact>) = assertTrue(stream.render(screen.combine(inputs), events::add))
+            assertFalse(screen.update(9, 1L, TouchAction.MOVE, 0, listOf(finger)))
+            if (!fingerFirst) render(controller)
+            assertTrue(screen.update(9, 2L, TouchAction.DOWN, 0, listOf(finger)))
+            if (fingerFirst) render(emptyList())
+            render(controller)
+            assertEquals(2, events.last().pointers.size)
+            val stickId = events.last().pointers.single { it.point == stick.point }.id
+            val moved = finger.copy(point = Point(925f, 270f))
+            assertTrue(screen.update(9, 2L, TouchAction.MOVE, 0, listOf(moved)))
+            render(controller)
+            assertEquals(TouchAction.MOVE, events.last().action)
+            assertTrue(events.last().pointers.any { it.id == stickId && it.point == stick.point })
+            assertTrue(screen.update(9, 2L, TouchAction.UP, 0, listOf(moved)))
+            render(controller)
+            val release = events.last()
+            assertEquals(TouchAction.POINTER_UP, release.action)
+            assertFalse(release.pointers[release.index].id == stickId)
+            render(emptyList())
+            assertEquals(TouchAction.UP, events.last().action)
+            assertEquals(stickId, events.last().pointers.single().id)
+            assertEquals(listOf(TouchAction.DOWN, TouchAction.POINTER_DOWN, TouchAction.MOVE,
+                TouchAction.POINTER_UP, TouchAction.UP), events.map(TouchEvent::action))
+        }
+    }
+
     @Test fun shouldersDoNotRestartEitherStickStream() {
         val engine = engine()
         val stream = PointerStream()

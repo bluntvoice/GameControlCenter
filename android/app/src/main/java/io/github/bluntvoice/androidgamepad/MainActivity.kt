@@ -386,6 +386,24 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             HorizontalDivider()
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Text("手柄与触屏并用", modifier = Modifier.weight(1f))
+                                Switch(checked = remember(revision) { repository.hybridTouch },
+                                    enabled = android.os.Build.VERSION.SDK_INT >= 37 &&
+                                        backend != BackendChoice.ACCESSIBILITY,
+                                    onCheckedChange = {
+                                        change {
+                                            GameSession.stop()
+                                            repository.hybridTouch = it
+                                            revision++
+                                            if (it) "手柄与触屏并用已开启" else "手柄与触屏并用已关闭"
+                                        }
+                                    })
+                            }
+                            Text("测试功能。需要 Android 17 和 Shizuku。仅在横屏游戏控制中接收主屏触摸。",
+                                style = MaterialTheme.typography.bodySmall)
+                            HorizontalDivider()
                             Text("游戏内悬浮显示", style = MaterialTheme.typography.titleLarge)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically) {

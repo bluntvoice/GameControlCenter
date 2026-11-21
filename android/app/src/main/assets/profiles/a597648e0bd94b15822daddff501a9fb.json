@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "profileId": "a597648e0bd94b15822daddff501a9fb",
+  "revision": 23,
+  "name": "激战先锋",
+  "gamePackage": "com.netease.party",
+  "orientation": "landscape",
+  "coordinateSystem": {
+    "type": "normalizedGameViewport",
+    "referenceHeight": 1200
+  },
+  "parameters": {
+    "leftDeadzone": 0.1,
+    "rightDeadzone": 0.12,
+    "rightCurve": 1.5,
+    "cameraPxPerSecondAt1200": 800,
+    "tapMs": 50
+  },
+  "sourceSha256": "f269edffb3fe971606694ba44a0c8a216f174a80b33755f01f32d19f3ffab290",
+  "mappings": [
+    {
+      "id": "RT",
+      "button": "RT",
+      "action": "hold",
+      "point": {
+        "x": 0.879747,
+        "y": 0.72077
+      }
+    },
+    {
+      "id": "Y",
+      "button": "Y",
+      "action": "tap",
+      "point": {
+        "x": 0.77476,
+        "y": 0.585069
+      }
+    },
+    {
+      "id": "DOWN",
+      "button": "DOWN",
+      "action": "tap",
+      "point": {
+        "x": 0.870886,
+        "y": 0.927098
+      }
+    },
+    {
+      "id": "X",
+      "button": "X",
+      "action": "tap",
+      "point": {
+        "x": 0.808574,
+        "y": 0.400867
+      }
+    },
+    {
+      "id": "UP",
+      "button": "UP",
+      "action": "tap",
+      "point": {
+        "x": 0.96962,
+        "y": 0.78542
+      }
+    },
+    {
+      "id": "A",
+      "button": "A",
+      "action": "tap",
+      "point": {
+        "x": 0.958861,
+        "y": 0.742779
+      }
+    },
+    {
+      "id": "LB",
+      "button": "LB",
+      "action": "tap",
+      "point": {
+        "x": 0.951505,
+        "y": 0.586667
+      }
+    },
+    {
+      "id": "RB",
+      "button": "RB",
+      "action": "tap",
+      "point": {
+        "x": 0.955063,
+        "y": 0.459422
+      }
+    },
+    {
+      "id": "right",
+      "action": "camera",
+      "point": {
+        "x": 0.7149,
+        "y": 0.1614
+      },
+      "speedScale": 1.0
+    },
+    {
+      "id": "LEFT",
+      "button": "LEFT",
+      "action": "tap",
+      "point": {
+        "x": 0.780658,
+        "y": 0.837486
+      }
+    },
+    {
+      "id": "RIGHT",
+      "button": "RIGHT",
+      "action": "hold",
+      "point": {
+        "x": 0.875399,
+        "y": 0.396701
+      }
+    },
+    {
+      "id": "left",
+      "action": "joystick",
+      "point": {
+        "x": 0.126582,
+        "y": 0.74553
+      },
+      "rangeAt1200": {
+        "left": 75.0,
+        "right": 75.0,
+        "up": 75.0,
+        "down": 75.0
+      }
+    },
+    {
+      "id": "LT",
+      "button": "LT",
+      "action": "hold",
+      "point": {
+        "x": 0.06962,
+        "y": 0.452545
+      }
+    },
+    {
+      "id": "B",
+      "button": "B",
+      "action": "hold",
+      "point": {
+        "x": 0.833866,
+        "y": 0.571181
+      }
+    },
+    {
+      "id": "LS",
+      "button": "LS",
+      "action": "tap",
+      "point": {
+        "x": 0.906949,
+        "y": 0.525174
+      }
+    }
+  ],
+  "unconverted": [
+    {
+      "index": 15,
+      "reason": "No physical controller binding for RightButton",
+      "node": {
+        "type": "KMT_SCRIPT",
+        "key": "RightButton",
+        "pos": {
+          "x": 0.953177,
+          "y": 0.590303
+        },
+        "script": "if (mapi.isPress()) { mapi.click(); }"
+      }
+    }
+  ]
+}

@@ -68,7 +68,7 @@ class ProfileRepository(private val context: Context) {
         check(edit.commit()) { "无法保存键位颜色" }
     }
 
-    val hintOpacity get() = preferences.getFloat("hintOpacity", .46f)
+    val hintOpacity get() = preferences.getFloat("hintOpacity", .72f)
     val panelOpacity get() = preferences.getFloat("panelOpacity", .88f)
     val panelPlacement get() = Point(
         preferences.getFloat("panelX", 1f).coerceIn(0f, 1f),

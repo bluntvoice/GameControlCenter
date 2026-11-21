@@ -334,13 +334,24 @@ private class EditorCanvas(
 
 private class HintCanvas(context: Context, profile: Profile, private val opacity: Float, color: (HintKey) -> Int) :
     View(context) {
-    private data class Label(val point: Point, val key: HintKey, val color: Int)
-    private val labels = profile.mappings.map { Label(it.point, it.hintKey(), color(it.hintKey())) }
+    private data class Label(val point: Point, val key: HintKey, val color: Int) {
+        val outlineColor = if (Color.luminance(color) >= .18f) 0xFF10141E.toInt() else 0xFFF7FAFF.toInt()
+    }
+
+    private val labels = profile.mappings.map {
+        val key = it.hintKey()
+        Label(it.point, key, color(key))
+    }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
     private val density = resources.displayMetrics.density
+    private val outline = Paint(paint).apply {
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
+        strokeWidth = 2.5f * density
+    }
     private val flashUntil = LongArray(HintKey.entries.size)
     private var previous = emptySet<Button>()
 
@@ -363,9 +374,12 @@ private class HintCanvas(context: Context, profile: Profile, private val opacity
             paint.textSize = (13f + 2.5f * intensity) * density
             paint.color = entry.color
             paint.alpha = ((opacity + (1f - opacity) * intensity) * 255).roundToInt()
-            if (remaining > 0) paint.setShadowLayer((1.5f + 2.5f * intensity) * density, 0f, 0f, entry.color)
-            else paint.setShadowLayer(1.5f * density, 0f, density, Color.BLACK)
-            drawLabel(canvas, paint, entry.key.label, entry.point.x * width, entry.point.y * height, width, height)
+            outline.textSize = paint.textSize
+            outline.color = entry.outlineColor
+            outline.alpha = paint.alpha
+            if (remaining > 0) outline.setShadowLayer((1.5f + 2.5f * intensity) * density, 0f, 0f, entry.color)
+            else outline.clearShadowLayer()
+            drawLabel(canvas, paint, entry.key.label, entry.point.x * width, entry.point.y * height, width, height, outline)
         }
         if (flashing) postInvalidateOnAnimation()
     }
@@ -373,10 +387,21 @@ private class HintCanvas(context: Context, profile: Profile, private val opacity
     companion object { private const val FLASH_MS = 210L }
 }
 
-private fun drawLabel(canvas: Canvas, paint: Paint, text: String, x: Float, y: Float, width: Int, height: Int) {
-    val halfWidth = (paint.measureText(text) / 2).coerceAtMost(width / 2f)
-    val halfHeight = ((paint.descent() - paint.ascent()) / 2).coerceAtMost(height / 2f)
+private fun drawLabel(
+    canvas: Canvas,
+    paint: Paint,
+    text: String,
+    x: Float,
+    y: Float,
+    width: Int,
+    height: Int,
+    outline: Paint? = null,
+) {
+    val inset = (outline?.strokeWidth ?: 0f) / 2
+    val halfWidth = (paint.measureText(text) / 2 + inset).coerceAtMost(width / 2f)
+    val halfHeight = ((paint.descent() - paint.ascent()) / 2 + inset).coerceAtMost(height / 2f)
     val centerX = x.coerceIn(halfWidth, width - halfWidth)
-    val centerY = y.coerceIn(halfHeight, height - halfHeight)
-    canvas.drawText(text, centerX, centerY - (paint.ascent() + paint.descent()) / 2, paint)
+    val baseline = y.coerceIn(halfHeight, height - halfHeight) - (paint.ascent() + paint.descent()) / 2
+    outline?.let { canvas.drawText(text, centerX, baseline, it) }
+    canvas.drawText(text, centerX, baseline, paint)
 }

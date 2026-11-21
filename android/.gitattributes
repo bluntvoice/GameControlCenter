@@ -1,3 +1,4 @@
 * text=auto
 gradlew text eol=lf
 *.bat text eol=crlf
+app/src/main/assets/profiles/*.json text eol=lf

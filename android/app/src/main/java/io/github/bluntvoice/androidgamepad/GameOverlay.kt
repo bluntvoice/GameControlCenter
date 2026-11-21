@@ -38,8 +38,9 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
         toggle: () -> Unit,
         stop: () -> Unit,
         edit: (() -> Unit)? = null,
+        mappingViewport: Viewport = viewport,
     ) {
-        showHints(profile, viewport)
+        showHints(profile, mappingViewport)
         if (panelKey == label && panel != null) return
         clearPanel()
         val params = positioned(-2, -2, viewport).apply {

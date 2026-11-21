@@ -51,7 +51,9 @@ object GameSession : InputManager.InputDeviceListener {
     private var started = 0L
     private var waitingSince = 0L
     private var token = 0
-    private var region: Viewport? = null
+    private data class GameRegion(val safe: Viewport, val mapping: Viewport)
+
+    private var region: GameRegion? = null
     private var engine: MappingEngine? = null
     private var backend: TouchBackend? = null
     private var shellBacked = false
@@ -259,7 +261,7 @@ object GameSession : InputManager.InputDeviceListener {
         val selected = profile ?: return
         val status = state.value.status
         if (releasing) return
-        val viewport = gameViewport(selected.gamePackage)
+        val viewport = gameRegion(selected)
         if (viewport == null) {
             overlay?.clear()
             if (status in ACTIVE_STATES || status == GameStatus.EDITING) {
@@ -279,25 +281,29 @@ object GameSession : InputManager.InputDeviceListener {
         }
         when (status) {
             GameStatus.WAITING -> if (editingRequested) showEditor(selected, viewport) else begin(selected, viewport)
-            GameStatus.READY, GameStatus.ACTIVE -> overlay?.controls("暂停", selected, viewport, ::pause, ::stopFromOverlay)
-            GameStatus.PAUSED, GameStatus.ERROR -> overlay?.controls("继续", selected, viewport, ::resume, ::stopFromOverlay, ::editFromOverlay)
+            GameStatus.READY, GameStatus.ACTIVE -> overlay?.controls(
+                "暂停", selected, viewport.safe, ::pause, ::stopFromOverlay, mappingViewport = viewport.mapping,
+            )
+            GameStatus.PAUSED, GameStatus.ERROR -> overlay?.controls(
+                "继续", selected, viewport.safe, ::resume, ::stopFromOverlay, ::editFromOverlay, viewport.mapping,
+            )
             else -> Unit
         }
     }
 
     private fun stopFromOverlay() = stop()
 
-    private fun showEditor(selected: Profile, viewport: Viewport) {
+    private fun showEditor(selected: Profile, viewport: GameRegion) {
         val currentOverlay = overlay ?: return
         region = viewport
         val editable = runCatching { repository.editable(selected.id) }.getOrElse {
             stop(it.message ?: "无法打开映射编辑", GameStatus.ERROR)
             return
         }
-        publish(GameStatus.EDITING, selected.name, viewport = viewport)
+        publish(GameStatus.EDITING, selected.name, viewport = viewport.mapping)
         runCatching {
             currentOverlay.editor(
-                selected, viewport,
+                selected, viewport.mapping,
                 save = save@{ points, ranges ->
                     if (points.isEmpty() && ranges.isEmpty()) {
                         stop("映射位置未修改", GameStatus.PAUSED)
@@ -325,7 +331,7 @@ object GameSession : InputManager.InputDeviceListener {
         }.onFailure { stop(it.message ?: "无法打开编辑浮层", GameStatus.ERROR) }
     }
 
-    private fun begin(selected: Profile, viewport: Viewport) {
+    private fun begin(selected: Profile, viewport: GameRegion) {
         val capture = service ?: return
         val attached = ControllerInput.currentController()
         if (attached == null) {
@@ -357,31 +363,32 @@ object GameSession : InputManager.InputDeviceListener {
         }
         region = viewport
         deviceId = attached.id
-        publish(GameStatus.STARTING, "正在准备触控会话", backendName, viewport)
+        publish(GameStatus.STARTING, "正在准备触控会话", backendName, viewport.mapping)
         fun fail(message: String) {
             if (currentToken == token) stop(message, GameStatus.ERROR)
         }
         fun accepted() {
             if (currentToken == token && state.value.status == GameStatus.READY) {
-                publish(GameStatus.ACTIVE, selected.name, backendName, viewport)
+                publish(GameStatus.ACTIVE, selected.name, backendName, viewport.mapping)
             }
         }
         fun ready(newBackend: TouchBackend) {
             if (currentToken != token) return
-            if (gameViewport(selected.gamePackage) != viewport) {
+            if (gameRegion(selected) != viewport) {
                 fail("启动时游戏窗口已变化")
                 return
             }
             controller.reset()
-            engine = MappingEngine(selected, viewport, repository.calibration(attached))
+            engine = MappingEngine(selected, viewport.mapping, repository.calibration(attached))
             backend = newBackend
             started = SystemClock.uptimeMillis()
             hadContacts = false
             lastTargetCheck = 0L
             screenContacts = if (hybrid) ScreenContacts() else null
             capture.capture(true, screen = hybrid)
-            Log.i(TAG, "session_ready profile=${selected.id} backend=$backendName viewport=$viewport device=${attached.id}")
-            publish(GameStatus.READY, if (hybrid) "等待手柄或触屏动作" else "等待手柄动作", backendName, viewport)
+            Log.i(TAG, "session_ready profile=${selected.id} backend=$backendName viewport=${viewport.safe} " +
+                "mappingViewport=${viewport.mapping} device=${attached.id}")
+            publish(GameStatus.READY, if (hybrid) "等待手柄或触屏动作" else "等待手柄动作", backendName, viewport.mapping)
             tick(currentToken)
         }
         if (shellBacked) ShellConnection.backend(app, targetUid, ::ready, ::fail, ::accepted, selected.gamePackage)
@@ -407,8 +414,8 @@ object GameSession : InputManager.InputDeviceListener {
         val controllerContacts = engine?.frame(controller.state, now) ?: return
         val contacts = screenContacts?.combine(controllerContacts) ?: controllerContacts
         if (contacts.isNotEmpty() && (checkTarget || !hadContacts || now - lastTargetCheck >= 48)) {
-            val target = profile?.gamePackage ?: return
-            if (gameViewport(target) != region) {
+            val selected = profile ?: return
+            if (gameRegion(selected) != region) {
                 stop("触控前检查发现游戏已失焦或区域变化", GameStatus.PAUSED)
                 return
             }
@@ -424,7 +431,7 @@ object GameSession : InputManager.InputDeviceListener {
         backend?.frame(contacts)
     }
 
-    private fun gameViewport(target: String): Viewport? {
+    private fun gameRegion(selected: Profile): GameRegion? {
         val capture = service ?: return null
         if (!app.getSystemService(PowerManager::class.java).isInteractive ||
             app.getSystemService(KeyguardManager::class.java).isKeyguardLocked) return null
@@ -435,7 +442,7 @@ object GameSession : InputManager.InputDeviceListener {
                     it.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }) return null
             windows.firstOrNull {
                 it.displayId == 0 && it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.isFocused
-            }?.takeIf { it.root?.packageName?.toString() == target }
+            }?.takeIf { it.root?.packageName?.toString() == selected.gamePackage }
         } catch (_: SecurityException) {
             return null
         } ?: return null
@@ -443,11 +450,17 @@ object GameSession : InputManager.InputDeviceListener {
         window.getBoundsInScreen(bounds)
         val metrics = capture.getSystemService(WindowManager::class.java).maximumWindowMetrics
         val screen = metrics.bounds
-        val safe = metrics.windowInsets.getInsets(WindowInsets.Type.displayCutout())
-        val safeBounds = Rect(screen.left + safe.left, screen.top + safe.top,
-            screen.right - safe.right, screen.bottom - safe.bottom)
+        val cutout = metrics.windowInsets.getInsets(WindowInsets.Type.displayCutout())
+        val windowRight = minOf(bounds.right, screen.right)
+        val safeBounds = Rect(screen.left + cutout.left, screen.top + cutout.top,
+            screen.right - cutout.right, screen.bottom - cutout.bottom)
         if (!bounds.intersect(safeBounds) || bounds.width() <= bounds.height() || bounds.height() <= 1) return null
-        return Viewport(bounds.left, bounds.top, bounds.width(), bounds.height())
+        val safe = Viewport(bounds.left, bounds.top, bounds.width(), bounds.height())
+        // The Arena HUD stays fixed when the camera cutout changes sides.
+        val mapping = if (selected.id == ProfileRepository.ARENA_ID) {
+            safe.withLeftCutoutReference(cutout.left, cutout.right, windowRight)
+        } else safe
+        return GameRegion(safe, mapping)
     }
 
     override fun onInputDeviceAdded(deviceId: Int) = Unit

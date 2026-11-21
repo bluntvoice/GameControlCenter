@@ -24,6 +24,12 @@ data class Viewport(val left: Int, val top: Int, val width: Int, val height: Int
         top + (point.y * height).coerceIn(0f, height - 1f),
     )
 
+    fun withLeftCutoutReference(leftInset: Int, rightInset: Int, windowRight: Int): Viewport {
+        val available = (windowRight - left - width).coerceAtLeast(0)
+        val shift = (rightInset - leftInset).coerceIn(0, available)
+        return if (shift == 0) this else copy(left = left + shift)
+    }
+
     fun clamp(point: Point) = Point(
         point.x.coerceIn(left.toFloat(), left + width - 1f),
         point.y.coerceIn(top.toFloat(), top + height - 1f),

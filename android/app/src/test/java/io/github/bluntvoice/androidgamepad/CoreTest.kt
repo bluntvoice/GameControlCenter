@@ -70,6 +70,18 @@ class CoreTest {
         assertEquals(contact.anchor.y - 45f, contact.point.y, .01f)
     }
 
+    @Test fun arenaMappingKeepsScreenPositionsWhenTheCutoutChangesSides() {
+        val leftCutout = Viewport(144, 0, 2464, 1200)
+        val rightCutout = Viewport(0, 0, 2464, 1200)
+        val reference = leftCutout.withLeftCutoutReference(leftInset = 144, rightInset = 0, windowRight = 2608)
+        val rotated = rightCutout.withLeftCutoutReference(leftInset = 0, rightInset = 144, windowRight = 2608)
+        assertEquals(leftCutout, reference)
+        val jump = Point(.9542f, .6542f)
+        assertEquals(reference.pixel(jump), rotated.pixel(jump))
+        assertEquals(2495.15f, rotated.pixel(jump).x, .01f)
+        assertEquals(rightCutout, rightCutout.withLeftCutoutReference(0, 144, windowRight = 2464))
+    }
+
     @Test fun leftStickGainScalesTheResponseWithoutExceedingItsRange() {
         val profile = Profile("gain", 1, "Gain", "test.game",
             Parameters(leftDeadzone = 0f, leftSensitivity = 2f), listOf(stick))

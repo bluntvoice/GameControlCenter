@@ -18,7 +18,7 @@ class ProfileRepository(private val context: Context) {
         }
 
     var selectedId: String
-        get() = preferences.getString("profile", null)?.takeIf { it in ids() } ?: "arena-3skills"
+        get() = preferences.getString("profile", null)?.takeIf { it in ids() } ?: ARENA_ID
         set(value) {
             require(value in ids())
             check(preferences.edit().putString("profile", value).commit()) { "无法保存所选方案" }
@@ -34,7 +34,7 @@ class ProfileRepository(private val context: Context) {
     fun ids() = (originals.keys + directory.listFiles().orEmpty()
         .filter { it.isFile && it.extension == "json" }.map { it.nameWithoutExtension }).distinct()
 
-    fun all(): List<Profile> = ids().map(::load).sortedBy { if (it.id == "arena-3skills") 0 else 1 }
+    fun all(): List<Profile> = ids().map(::load).sortedBy { if (it.id == ARENA_ID) 0 else 1 }
     fun load(id: String) = Profile.parse(read(id))
     fun isBuiltin(id: String) = id in originals
     fun editable(id: String) = JSONObject(read(id))
@@ -152,6 +152,7 @@ class ProfileRepository(private val context: Context) {
     }
 
     companion object {
+        const val ARENA_ID = "arena-3skills"
         const val GAME_PACKAGE = "com.netease.party"
         private const val MAX_BYTES = 512 * 1024
     }

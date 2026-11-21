@@ -248,7 +248,8 @@ object GameSession : InputManager.InputDeviceListener {
         if (current != null || wasStarting) {
             releasing = true
             publish(GameStatus.PAUSED, "正在释放触点")
-            if (shellBacked) ShellConnection.close(::finish)
+            if (shellBacked && afterRelease != null) ShellConnection.releaseForSwitch(::finish)
+            else if (shellBacked) ShellConnection.close(::finish)
             else if (current != null) current.stop(::finish) else finish(null)
         } else {
             finish(null)

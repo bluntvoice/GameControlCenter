@@ -148,6 +148,7 @@ object ShellConnection {
     private var attempt = 0
     private var target: ShizukuTouchBackend? = null
     private var args: Shizuku.UserServiceArgs? = null
+    private var boundService: ITouchService? = null
     var status = "等待 Shizuku"
         private set
 
@@ -171,27 +172,41 @@ object ShellConnection {
             fail("另一个触控会话正在使用 Shizuku")
             return
         }
+        val candidate = ShizukuTouchBackend(worker, handler, owner, fail, accepted)
+        target = candidate
+
+        fun open(service: ITouchService) {
+            candidate.open(service, targetUid, foregroundPackage) { error ->
+                if (target !== candidate) return@open
+                if (error == null) {
+                    status = "Shizuku shell 注入会话已建立"
+                    ready(candidate)
+                } else {
+                    status = error
+                    fail(error)
+                }
+            }
+        }
+
+        handler.postDelayed({
+            if (target === candidate && !candidate.isReady) fail("Shizuku UserService 准备超时")
+        }, 6000)
+        boundService?.let {
+            open(it)
+            return
+        }
+
         val token = ++attempt
         val serviceArgs = Shizuku.UserServiceArgs(ComponentName(context, ShellTouchService::class.java))
             .daemon(false).processNameSuffix("gamepad_touch").version(3)
         args = serviceArgs
         status = "正在连接 Shizuku UserService"
-        val candidate = ShizukuTouchBackend(worker, handler, owner, fail, accepted)
-        target = candidate
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-                if (token != attempt) return
+                if (token != attempt || target !== candidate || boundService != null) return
                 val service = ITouchService.Stub.asInterface(binder)
-                candidate.open(service, targetUid, foregroundPackage) { error ->
-                    if (token != attempt) return@open
-                    if (error == null) {
-                        status = "Shizuku shell 注入会话已建立"
-                        ready(candidate)
-                    } else {
-                        status = error
-                        fail(error)
-                    }
-                }
+                boundService = service
+                open(service)
             }
 
             override fun onServiceDisconnected(name: ComponentName) {
@@ -202,16 +217,37 @@ object ShellConnection {
         runCatching { Shizuku.bindUserService(serviceArgs, connection) }.onFailure {
             fail("无法绑定 Shizuku UserService：${it.message}")
         }
-        handler.postDelayed({
-            if (token == attempt && !candidate.isReady) fail("Shizuku UserService 准备超时")
-        }, 6000)
     }
 
     private var activeConnection: ServiceConnection? = null
 
     fun lost(message: String) {
         status = message
+        boundService = null
         target?.connectionLost(message)
+    }
+
+    fun releaseForSwitch(done: (String?) -> Unit) {
+        val old = target
+        if (old == null || boundService == null) {
+            close { error -> done(error ?: "Shizuku UserService 已断开") }
+            return
+        }
+        old.stop { error ->
+            target = null
+            if (error != null || boundService == null) {
+                close { done(error ?: "Shizuku UserService 已断开") }
+            } else {
+                status = "Shizuku 旧触控会话已释放"
+                // A successful continuation opens the next session before returning.
+                // If the game lost focus or the switch was cancelled, unbind normally.
+                try {
+                    done(null)
+                } finally {
+                    if (target == null) close {}
+                }
+            }
+        }
     }
 
     fun close(done: (String?) -> Unit) {
@@ -222,6 +258,7 @@ object ShellConnection {
         target = null
         args = null
         activeConnection = null
+        boundService = null
         fun finish(error: String?) {
             if (oldArgs != null && oldConnection != null) {
                 runCatching { Shizuku.unbindUserService(oldArgs, oldConnection, true) }

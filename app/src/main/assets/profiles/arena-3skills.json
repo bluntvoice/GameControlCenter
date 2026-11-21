@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "profileId": "arena-3skills",
+  "revision": 39,
+  "name": "超燃竞技场-三技能",
+  "gamePackage": "com.netease.party",
+  "orientation": "landscape",
+  "coordinateSystem": {
+    "type": "normalizedGameViewport",
+    "referenceHeight": 1200
+  },
+  "parameters": {
+    "leftDeadzone": 0.1,
+    "rightDeadzone": 0.12,
+    "rightCurve": 1.5,
+    "cameraPxPerSecondAt1200": 800,
+    "tapMs": 50
+  },
+  "sourceSha256": "04dfd92134df85f79ca055303979900f5fc756e771ba9449d9fe524dd7524b6d",
+  "mappings": [
+    {
+      "id": "B",
+      "button": "B",
+      "action": "hold",
+      "point": {
+        "x": 0.8939,
+        "y": 0.5591
+      }
+    },
+    {
+      "id": "LT",
+      "button": "LT",
+      "action": "repeat",
+      "point": {
+        "x": 0.8772,
+        "y": 0.8748
+      },
+      "repeatHz": 3.0
+    },
+    {
+      "id": "left",
+      "action": "joystick",
+      "point": {
+        "x": 0.1266,
+        "y": 0.7455
+      },
+      "rangeAt1200": {
+        "left": 90.0,
+        "right": 90.0,
+        "up": 90.0,
+        "down": 90.0
+      }
+    },
+    {
+      "id": "RIGHT",
+      "button": "RIGHT",
+      "action": "hold",
+      "point": {
+        "x": 0.7966,
+        "y": 0.4655
+      }
+    },
+    {
+      "id": "LEFT",
+      "button": "LEFT",
+      "action": "hold",
+      "point": {
+        "x": 0.2362,
+        "y": 0.4668
+      }
+    },
+    {
+      "id": "right",
+      "action": "camera",
+      "point": {
+        "x": 0.7149,
+        "y": 0.1614
+      },
+      "speedScale": 1.0
+    },
+    {
+      "id": "RB",
+      "button": "RB",
+      "action": "tap",
+      "point": {
+        "x": 0.9057,
+        "y": 0.8762
+      }
+    },
+    {
+      "id": "LB",
+      "button": "LB",
+      "action": "hold",
+      "point": {
+        "x": 0.6764,
+        "y": 0.9006
+      }
+    },
+    {
+      "id": "A",
+      "button": "A",
+      "action": "tap",
+      "point": {
+        "x": 0.9542,
+        "y": 0.6542
+      }
+    },
+    {
+      "id": "UP",
+      "button": "UP",
+      "action": "hold",
+      "point": {
+        "x": 0.5066,
+        "y": 0.4696
+      }
+    },
+    {
+      "id": "X",
+      "button": "X",
+      "action": "hold",
+      "point": {
+        "x": 0.8017,
+        "y": 0.8098
+      }
+    },
+    {
+      "id": "DOWN",
+      "button": "DOWN",
+      "action": "tap",
+      "point": {
+        "x": 0.7467,
+        "y": 0.7233
+      }
+    },
+    {
+      "id": "Y",
+      "button": "Y",
+      "action": "hold",
+      "point": {
+        "x": 0.8475,
+        "y": 0.6499
+      }
+    },
+    {
+      "id": "RT",
+      "button": "RT",
+      "action": "hold",
+      "point": {
+        "x": 0.6065,
+        "y": 0.904
+      }
+    }
+  ],
+  "unconverted": []
+}

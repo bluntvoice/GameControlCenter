@@ -34,10 +34,22 @@ class ProfileRepository(private val context: Context) {
     fun ids() = (originals.keys + directory.listFiles().orEmpty()
         .filter { it.isFile && it.extension == "json" }.map { it.nameWithoutExtension }).distinct()
 
-    fun all(): List<Profile> = ids().map(::load).sortedBy { if (it.id == ARENA_ID) 0 else 1 }
-    fun forGame(packageName: String): List<Profile> = ids().mapNotNull { id ->
+    private fun orderedIds() = mergeProfileOrder(
+        ids().sortedBy { if (it == ARENA_ID) 0 else 1 },
+        preferences.getString("profileOrder", null).orEmpty().split(','),
+    )
+
+    fun saveOrder(order: List<String>) {
+        val available = ids()
+        require(order.size == available.size && order.toSet() == available.toSet()) { "方案列表已变化，请重试" }
+        check(preferences.edit().putString("profileOrder", order.joinToString(",")).commit()) { "无法保存方案顺序" }
+    }
+
+    fun all(): List<Profile> = orderedIds().map(::load)
+
+    fun forGame(packageName: String): List<Profile> = orderedIds().mapNotNull { id ->
         runCatching { load(id) }.getOrNull()?.takeIf { it.gamePackage == packageName }
-    }.sortedBy { if (it.id == ARENA_ID) 0 else 1 }
+    }
 
     fun load(id: String) = Profile.parse(read(id))
     fun isBuiltin(id: String) = id in originals
@@ -146,6 +158,7 @@ class ProfileRepository(private val context: Context) {
         val profile = Profile.parse(text)
         val raw = text.toByteArray(Charsets.UTF_8)
         require(raw.size <= MAX_BYTES) { "方案文件超过 512 KB" }
+        val previousOrder = orderedIds()
         val file = AtomicFile(File(directory, "${profile.id}.json"))
         val output = file.startWrite()
         try {
@@ -156,6 +169,9 @@ class ProfileRepository(private val context: Context) {
             throw failure
         }
         check(file.readFully().contentEquals(raw)) { "方案保存校验失败" }
+        if (profile.id !in previousOrder) {
+            preferences.edit().putString("profileOrder", (previousOrder + profile.id).joinToString(",")).apply()
+        }
         return profile
     }
 
@@ -164,4 +180,9 @@ class ProfileRepository(private val context: Context) {
         const val GAME_PACKAGE = "com.netease.party"
         private const val MAX_BYTES = 512 * 1024
     }
+}
+
+internal fun mergeProfileOrder(available: List<String>, saved: List<String>): List<String> {
+    val availableIds = available.toSet()
+    return (saved.filter(availableIds::contains) + available).distinct()
 }

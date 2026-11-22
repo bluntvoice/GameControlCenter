@@ -17,6 +17,13 @@ class CoreTest {
     private val aim = Mapping("Y", Action.AIM, Point(.8f, .5f), Button.Y)
     private val repeat = Mapping("X", Action.REPEAT, Point(.6f, .5f), Button.X, repeatHz = 3f)
 
+    @Test fun profileOrderPreservesDefaultsAndAppendsNewProfiles() {
+        val available = listOf("arena", "vanguard", "imported", "copy")
+        assertEquals(available, mergeProfileOrder(available, emptyList()))
+        assertEquals(listOf("vanguard", "arena", "imported", "copy"),
+            mergeProfileOrder(available, listOf("missing", "vanguard", "arena", "vanguard")))
+    }
+
     @Test fun profileAssetsMatchTheirVerifiedBindingCounts() {
         fun read(id: String) = Profile.parse(File("src/main/assets/profiles/$id.json").readText(Charsets.UTF_8))
         val arena = read("arena-3skills")

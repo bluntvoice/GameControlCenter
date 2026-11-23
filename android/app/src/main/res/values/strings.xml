@@ -2,4 +2,6 @@
     <string name="app_name">安卓手柄控制台</string>
     <string name="service_name">安卓手柄控制台 · 手柄输入</string>
     <string name="service_description">识别前台游戏窗口和尺寸，仅在开始控制后读取已选手柄的事件。暂停或切换应用后交还输入。编辑位置时暂停触控。</string>
+    <string name="input_channel_name">手柄输入服务</string>
+    <string name="input_notification_text">无障碍手柄输入已连接</string>
 </resources>

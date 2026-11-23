@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        GameSession.service?.keepInputServiceInForeground()
         resumeRevision.value++
     }
 
@@ -168,6 +169,7 @@ class MainActivity : ComponentActivity() {
         val session by GameSession.state.collectAsState()
         var attached by remember { mutableStateOf(ControllerInput.currentController()) }
         var accessReady by remember { mutableStateOf(GameSession.service != null) }
+        var accessEnabled by remember { mutableStateOf(ControllerService.isEnabledInSettings(this)) }
         var shellReachable by remember { mutableStateOf(Shizuku.pingBinder()) }
         var shellReady by remember { mutableStateOf(ShellConnection.available()) }
         var clock by remember { mutableStateOf(SystemClock.uptimeMillis()) }
@@ -175,6 +177,7 @@ class MainActivity : ComponentActivity() {
             while (true) {
                 attached = ControllerInput.currentController()
                 accessReady = GameSession.service != null
+                accessEnabled = accessReady || ControllerService.isEnabledInSettings(this@MainActivity)
                 shellReachable = Shizuku.pingBinder()
                 shellReady = ShellConnection.available()
                 clock = SystemClock.uptimeMillis()
@@ -262,7 +265,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     when (page) {
                         Page.HOME -> Dashboard(
-                            profile, session, attached, accessReady, shellReachable, shellReady, backend,
+                            profile, session, attached, accessReady, accessEnabled, shellReachable, shellReady, backend,
                             start = { launchGame(false) },
                             edit = { launchGame(true) },
                             stop = { GameSession.stop() },
@@ -277,11 +280,13 @@ class MainActivity : ComponentActivity() {
                         Page.PROFILES -> {
                             Text("本地方案", style = MaterialTheme.typography.titleLarge)
                             ProfileOrderList(catalog, profile.id, scroll, viewport, select = { item ->
-                                change {
-                                    GameSession.stop()
-                                    repository.selectedId = item.id
-                                    revision++
-                                    "已选 ${item.name}"
+                                if (item.id != profile.id) {
+                                    runCatching {
+                                        repository.selectedId = item.id
+                                        GameSession.stop()
+                                        revision++
+                                        GameSession.announceProfileSwitch(profile, item)
+                                    }.onFailure { report(it.message ?: "无法切换方案") }
                                 }
                             }, saveOrder = { order ->
                                 runCatching { repository.saveOrder(order) }.fold(
@@ -444,6 +449,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Dashboard(
     profile: Profile, session: GameSnapshot, attached: InputDevice?, accessReady: Boolean,
+    accessEnabled: Boolean,
     shellReachable: Boolean, shellReady: Boolean, backend: BackendChoice,
     start: () -> Unit, edit: () -> Unit, stop: () -> Unit,
     openSettings: () -> Unit, authorize: () -> Unit,
@@ -480,8 +486,14 @@ private fun Dashboard(
     }
     HorizontalDivider()
     StatusRow("手柄", attached?.name ?: "未连接", attached != null)
-    StatusRow("无障碍", if (accessReady) "已连接" else "等待开启", accessReady)
-    if (!accessReady) OutlinedButton(onClick = openSettings) { Text("开启无障碍手柄输入") }
+    StatusRow("无障碍", when {
+        accessReady -> "已连接"
+        accessEnabled -> "开关已开，服务未连接"
+        else -> "未开启"
+    }, accessReady)
+    if (!accessReady) OutlinedButton(onClick = openSettings) {
+        Text(if (accessEnabled) "检查无障碍连接" else "开启无障碍手柄输入")
+    }
     StatusRow("Shizuku", when {
         shellReady -> "已授权"
         shellReachable -> "等待授权"

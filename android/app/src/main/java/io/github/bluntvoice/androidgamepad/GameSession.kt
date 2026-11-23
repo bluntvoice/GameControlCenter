@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.WindowInsets
@@ -235,6 +236,10 @@ object GameSession : InputManager.InputDeviceListener {
             val detail = error ?: reason
             Log.i(TAG, "session_end status=$label detail=$detail")
             publish(label, detail)
+            if (current != null && (afterRelease == null || error != null || label != GameStatus.PAUSED)) {
+                val action = if (label == GameStatus.PAUSED) "控制已暂停" else "控制已停止"
+                toast(if (detail.isBlank()) action else "$action · $detail")
+            }
             if (afterRelease != null && switchingTo != null) {
                 if (error == null && label == GameStatus.PAUSED) {
                     afterRelease()
@@ -295,7 +300,7 @@ object GameSession : InputManager.InputDeviceListener {
             }
             publish(GameStatus.PAUSED, "已切换至 · ${next.name}")
             observeWindow()
-            toast("已切换至：${next.name}")
+            announceProfileSwitch(current, next)
             return
         }
 
@@ -320,6 +325,10 @@ object GameSession : InputManager.InputDeviceListener {
                 false
             },
         )
+    }
+
+    internal fun announceProfileSwitch(previous: Profile, selected: Profile) {
+        if (previous.id != selected.id) toast("方案切换 · ${previous.name} → ${selected.name}")
     }
 
     private fun toast(message: String) {
@@ -471,6 +480,7 @@ object GameSession : InputManager.InputDeviceListener {
                 return
             }
             val switched = switchingTo === selected
+            val previous = profile
             if (switched && !saveSelectedProfile(selected)) {
                 fail("无法保存所选方案")
                 return
@@ -487,7 +497,10 @@ object GameSession : InputManager.InputDeviceListener {
                 "mappingViewport=${viewport.mapping} device=${attached.id}")
             publish(GameStatus.READY, if (hybrid) "等待手柄或触屏动作" else "等待手柄动作", backendName, viewport.mapping)
             observeWindow()
-            if (switched && currentToken == token) toast("已切换至：${selected.name}")
+            if (currentToken == token) {
+                if (switched && previous != null) announceProfileSwitch(previous, selected)
+                else toast("已开始控制 · ${selected.name}")
+            }
             tick(currentToken)
         }
         if (shellBacked) ShellConnection.backend(app, targetUid, ::ready, ::fail, ::accepted, selected.gamePackage)
@@ -557,7 +570,10 @@ object GameSession : InputManager.InputDeviceListener {
         return GameRegion(safe, mapping)
     }
 
-    override fun onInputDeviceAdded(deviceId: Int) = Unit
+    override fun onInputDeviceAdded(deviceId: Int) {
+        val device = InputDevice.getDevice(deviceId) ?: return
+        if (ControllerInput.isController(device)) toast("手柄已连接 · ${device.name}")
+    }
 
     override fun onInputDeviceRemoved(deviceId: Int) {
         if (deviceId == this.deviceId) stop("手柄已断开，重连后可继续", GameStatus.PAUSED)

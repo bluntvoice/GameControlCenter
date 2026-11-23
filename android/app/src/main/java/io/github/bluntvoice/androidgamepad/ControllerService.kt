@@ -2,9 +2,18 @@ package io.github.bluntvoice.androidgamepad
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.hardware.input.InputManager
 import android.os.Build
+import android.provider.Settings
+import android.util.Log
 import android.view.Display
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -16,12 +25,44 @@ class ControllerService : AccessibilityService() {
     private val consumed = mutableSetOf<Pair<Int, Int>>()
     private var capturing = false
     private var capturingScreen = false
+    private var inForeground = false
 
     override fun onServiceConnected() {
         ProbeRuntime.initialize(this)
         ProbeRuntime.service = this
         GameSession.serviceConnected(this)
         capture(false)
+        keepInputServiceInForeground()
+    }
+
+    internal fun keepInputServiceInForeground() {
+        if (GameSession.service !== this || inForeground) return
+        try {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(NotificationChannel(
+                INPUT_CHANNEL, getString(R.string.input_channel_name), NotificationManager.IMPORTANCE_LOW,
+            ))
+            val openConsole = PendingIntent.getActivity(this, 0,
+                Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val notification = Notification.Builder(this, INPUT_CHANNEL)
+                .setSmallIcon(R.drawable.ic_gamepad_notification)
+                .setContentTitle(getString(R.string.service_name))
+                .setContentText(getString(R.string.input_notification_text))
+                .setContentIntent(openConsole)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .build()
+            startForeground(INPUT_NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            inForeground = true
+            Log.i(TAG, "Input service promoted to foreground")
+        } catch (failure: IllegalStateException) {
+            Log.w(TAG, "Foreground protection unavailable; will retry when the console resumes", failure)
+        } catch (failure: SecurityException) {
+            Log.w(TAG, "Foreground protection denied", failure)
+        }
     }
 
     fun capture(enabled: Boolean, screen: Boolean = false) {
@@ -98,6 +139,16 @@ class ControllerService : AccessibilityService() {
     }
 
     companion object {
+        private const val TAG = "GamepadInputService"
+        private const val INPUT_CHANNEL = "gamepad-input"
+        private const val INPUT_NOTIFICATION = 401
+
+        internal fun isEnabledInSettings(context: Context): Boolean {
+            val component = ComponentName(context, ControllerService::class.java)
+            val enabled = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            return enabled.orEmpty().split(':').any { ComponentName.unflattenFromString(it) == component }
+        }
+
         // Public since API 37. Keep compiling the rest of the app against API 35.
         private val associatedDisplayId by lazy {
             runCatching { InputDevice::class.java.getMethod("getAssociatedDisplayId") }.getOrNull()
@@ -123,5 +174,9 @@ class ControllerService : AccessibilityService() {
             ProbeRuntime.service = null
         }
         GameSession.serviceDisconnected(this)
+        if (inForeground) {
+            inForeground = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }
     }
 }

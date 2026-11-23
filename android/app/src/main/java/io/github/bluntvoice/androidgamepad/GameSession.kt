@@ -48,6 +48,7 @@ object GameSession : InputManager.InputDeviceListener {
         private set
     private var overlay: GameOverlay? = null
     private var profile: Profile? = null
+    private var noticeTarget: Profile? = null
     private var switchingTo: Profile? = null
     private var choice = BackendChoice.AUTO
     private var editingRequested = false
@@ -55,7 +56,7 @@ object GameSession : InputManager.InputDeviceListener {
     private var started = 0L
     private var waitingSince = 0L
     private var token = 0
-    private data class GameRegion(val safe: Viewport, val mapping: Viewport)
+    private data class GameRegion(val safe: Viewport, val mapping: Viewport, val toolbar: Viewport)
 
     private var region: GameRegion? = null
     private var engine: MappingEngine? = null
@@ -99,6 +100,7 @@ object GameSession : InputManager.InputDeviceListener {
         stop("无障碍服务已断开", GameStatus.ERROR)
         overlay?.clear()
         overlay = null
+        noticeTarget = null
         service = null
     }
 
@@ -187,6 +189,11 @@ object GameSession : InputManager.InputDeviceListener {
 
     fun windowChanged() {
         if (observing) observeWindow()
+        val target = noticeTarget ?: return
+        if (overlay?.hasNotice != true || gameRegion(target) == null) {
+            overlay?.clearNotice()
+            noticeTarget = null
+        }
     }
 
     fun pause() = stop("等待继续控制", GameStatus.PAUSED)
@@ -209,6 +216,9 @@ object GameSession : InputManager.InputDeviceListener {
         }
         val wasStarting = state.value.status == GameStatus.STARTING
         val current = backend
+        val previousProfile = profile
+        val endingPausedSession = status == GameStatus.STOPPED && previousProfile != null &&
+            state.value.status == GameStatus.PAUSED && !editingRequested
         ++token
         if (current != null || wasStarting) service?.capture(false)
         backend = null
@@ -236,9 +246,10 @@ object GameSession : InputManager.InputDeviceListener {
             val detail = error ?: reason
             Log.i(TAG, "session_end status=$label detail=$detail")
             publish(label, detail)
-            if (current != null && (afterRelease == null || error != null || label != GameStatus.PAUSED)) {
+            if ((current != null || endingPausedSession) &&
+                (afterRelease == null || error != null || label != GameStatus.PAUSED)) {
                 val action = if (label == GameStatus.PAUSED) "控制已暂停" else "控制已停止"
-                toast(if (detail.isBlank()) action else "$action · $detail")
+                toast(if (detail.isBlank()) action else "$action · $detail", previousProfile)
             }
             if (afterRelease != null && switchingTo != null) {
                 if (error == null && label == GameStatus.PAUSED) {
@@ -331,7 +342,12 @@ object GameSession : InputManager.InputDeviceListener {
         if (previous.id != selected.id) toast("方案切换 · ${previous.name} → ${selected.name}")
     }
 
-    private fun toast(message: String) {
+    private fun toast(message: String, target: Profile? = profile) {
+        val viewport = target?.let(::gameRegion)?.safe
+        if (viewport != null && overlay?.showNotice(message, viewport) == true) {
+            noticeTarget = target
+            return
+        }
         Toast.makeText(app, message, Toast.LENGTH_SHORT).show()
     }
 
@@ -372,11 +388,11 @@ object GameSession : InputManager.InputDeviceListener {
         when (status) {
             GameStatus.WAITING -> if (editingRequested) showEditor(selected, viewport) else begin(selected, viewport)
             GameStatus.READY, GameStatus.ACTIVE -> overlay?.controls(
-                "暂停", selected, viewport.safe, ::pause, ::stopFromOverlay, ::showProfilePicker,
+                "暂停", selected, viewport.toolbar, ::pause, ::stopFromOverlay, ::showProfilePicker,
                 mappingViewport = viewport.mapping,
             )
             GameStatus.PAUSED, GameStatus.ERROR -> overlay?.controls(
-                "继续", selected, viewport.safe, ::resume, ::stopFromOverlay, ::showProfilePicker,
+                "继续", selected, viewport.toolbar, ::resume, ::stopFromOverlay, ::showProfilePicker,
                 ::editFromOverlay, viewport.mapping,
             )
             else -> Unit
@@ -567,12 +583,17 @@ object GameSession : InputManager.InputDeviceListener {
         val mapping = if (selected.id == ProfileRepository.ARENA_ID) {
             safe.withLeftCutoutReference(cutout.left, cutout.right, windowRight)
         } else safe
-        return GameRegion(safe, mapping)
+        val toolbar = if (bounds == safeBounds) {
+            Viewport(screen.left, screen.top, screen.width(), screen.height())
+        } else safe
+        return GameRegion(safe, mapping, toolbar)
     }
 
     override fun onInputDeviceAdded(deviceId: Int) {
         val device = InputDevice.getDevice(deviceId) ?: return
-        if (ControllerInput.isController(device)) toast("手柄已连接 · ${device.name}")
+        if (!ControllerInput.isController(device)) return
+        val target = profile ?: runCatching { repository.load(repository.selectedId) }.getOrNull()
+        toast("手柄已连接 · ${device.name}", target)
     }
 
     override fun onInputDeviceRemoved(deviceId: Int) {

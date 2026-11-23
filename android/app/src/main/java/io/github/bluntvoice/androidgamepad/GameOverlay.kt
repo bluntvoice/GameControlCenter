@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.os.Handler
 import android.os.SystemClock
 import android.text.TextUtils
 import android.graphics.PixelFormat
@@ -29,6 +30,10 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
     private var panelKey = ""
     private var panelViewport: Viewport? = null
     private var profilePicker: View? = null
+    private var notice: View? = null
+    private val main = Handler(context.mainLooper)
+    private val expireNotice = Runnable(::clearNotice)
+    internal val hasNotice get() = notice != null
 
     private var hints: HintCanvas? = null
     private var hintsKey: Triple<String, Int, Viewport>? = null
@@ -335,7 +340,43 @@ class GameOverlay(private val context: Context, private val repository: ProfileR
         show(frame, params, "editor", strict = true)
     }
 
+    internal fun showNotice(message: String, viewport: Viewport): Boolean {
+        clearNotice()
+        val view = TextView(context).apply {
+            text = message
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(16), dp(9), dp(16), dp(9))
+            background = panelBackground()
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val maxWidth = minOf(viewport.width, dp(420))
+        view.measure(View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(viewport.height, View.MeasureSpec.AT_MOST))
+        val params = positioned(view.measuredWidth, view.measuredHeight, viewport).apply {
+            x += (viewport.width - view.measuredWidth) / 2
+            y += (viewport.height - view.measuredHeight - dp(24)).coerceAtLeast(0)
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            title = "安卓手柄控制台状态提示"
+        }
+        return runCatching { windows.addView(view, params) }.onSuccess {
+            notice = view
+            main.postDelayed(expireNotice, 2200L)
+        }.isSuccess
+    }
+
+    internal fun clearNotice() {
+        main.removeCallbacks(expireNotice)
+        val previous = notice
+        notice = null
+        if (previous != null) runCatching { windows.removeViewImmediate(previous) }
+    }
+
     fun clear() {
+        clearNotice()
         clearProfilePicker()
         clearPanel()
         clearHints()

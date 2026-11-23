@@ -1,5 +1,6 @@
 package io.github.bluntvoice.androidgamepad
 
+import android.app.NotificationManager
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -339,6 +340,15 @@ class MainActivity : ComponentActivity() {
                             ) { Text("校准当前摇杆中心") }
                         }
                         Page.SETTINGS -> {
+                            val notificationsAllowed = remember(resume) {
+                                getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+                            }
+                            StatusRow("系统通知", if (notificationsAllowed) "已允许" else "未允许", notificationsAllowed)
+                            OutlinedButton(onClick = {
+                                startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+                            }) { Text("打开系统通知设置") }
+                            HorizontalDivider()
                             Text("默认触控后端", style = MaterialTheme.typography.titleLarge)
                             BackendChoice.entries.forEach { option ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {

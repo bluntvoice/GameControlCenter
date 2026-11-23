@@ -18,6 +18,9 @@ import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Toast
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 enum class GameStatus(val label: String) {
     STOPPED("已停止"), WAITING("等待游戏"), STARTING("服务准备中"), READY("可以控制"),
@@ -32,6 +35,7 @@ data class InputSnapshot(val state: ControllerState = ControllerState(), val sou
 
 object GameSession : InputManager.InputDeviceListener {
     private const val TAG = "GamepadSession"
+    private val logTimestamp = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss", Locale.ROOT)
     private val main = Handler(Looper.getMainLooper())
     private val mutableState = MutableStateFlow(GameSnapshot())
     val state = mutableState.asStateFlow()
@@ -610,7 +614,8 @@ object GameSession : InputManager.InputDeviceListener {
         if (mutableState.value == next) return
         mutableState.value = next
         val entry = listOf(status.label, detail, backend).filter(String::isNotBlank).joinToString(" · ")
-        mutableLog.value = (mutableLog.value + entry).takeLast(40)
+        val timestamped = "${LocalDateTime.now().format(logTimestamp)}  $entry"
+        mutableLog.value = (mutableLog.value + timestamped).takeLast(40)
         Log.i(TAG, entry)
     }
 
